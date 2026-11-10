@@ -1,0 +1,178 @@
+# Build and development guide
+
+## Quick start
+
+Run commands from the repository root. `just` also finds the root justfile when
+invoked from a source subdirectory.
+
+```sh
+just                 # list tasks
+just bootstrap       # one-time dependency setup; requires network access
+just doctor          # offline prerequisite and pinned-revision checks
+just build           # checks, RELEASE EFI + Windows console builds, publication
+just verify          # recheck dist/release/ headers and checksums
+```
+
+On Arch Linux, host prerequisites are `just git make python gcc nasm
+mingw-w64-gcc util-linux`. Standard POSIX utilities and GNU coreutils are also
+used. Bootstrap installs Python dependencies only inside `deps/venv`; it does
+not install host packages. Wine and MSVC are not needed for cross-compilation.
+
+`just check` needs only `just`, Python, a POSIX shell, standard utilities, and
+`flock`; it does not need EDK2, MinGW, or network access. `just doctor` checks
+build tools and dependency checkouts, not Windows/firmware runtime compatibility.
+
+## Workspace layout
+
+```text
+Application/             upstream Loader and EfiDSEFix sources
+EfiGuardDxe/             upstream runtime driver and Zydis submodule
+Include/                 shared driver/loader/client interfaces
+EfiGuardPkg.{dsc,dec}     EDK2 package definitions
+EfiGuard.sln, *.props     native Visual Studio build definitions
+justfile                 supported task entry points
+scripts/                 build orchestration and artifact verification
+  compat/mingw/          Windows headers needed for Linux cross-compilation
+  test/                  pipeline regression tests and Windows smoke test
+docs/                    this guide
+
+deps/                    ignored: pinned EDK2 checkout, Python venv, task lock
+out/                     ignored: intermediate and component build products
+  edk2-ws/               EDK2 Conf/ state and Build/ tree
+  packages/EfiGuardPkg    generated symlink to the repository root
+  efi/<profile>/         EFI images, .debug symbols, .map files
+  windows/<profile>/     console/ and native/ outputs, each with its own obj/
+  logs/                  complete component build output
+  bootstrap/             generated Python requirements
+dist/<profile>/          ignored: complete, verified deployment bundle
+.scratch/                ignored: temporary regression-test workspaces
+```
+
+Source, scripts, tests, and documentation belong to the same Git repository.
+Do not put local credentials, machine access keys, or deployed-machine state in
+it. Nothing in the build pipeline connects to or changes a Windows host.
+
+## Build pipeline
+
+`just build [profile]` performs these steps in order:
+
+1. Check build prerequisites and pinned dependency revisions.
+2. Run `just check`'s checks: justfile formatting, shell/Python syntax, and
+   synthetic artifact/build-failure regression tests.
+3. Build the EFI driver and loader. A nonzero EDK2 exit status stops the pipeline.
+4. Build the Windows console utility. A compiler or linker error stops the pipeline.
+5. Validate all three images: x64 PE32+ headers, expected subsystems, section
+   bounds, and 4 KiB EFI file/section alignment.
+6. Prepare and verify a complete bundle with `SHA256SUMS`, then publish it to
+   `dist/<profile>/`. Failed builds leave the previously published bundle alone.
+
+Publication uses a prepared directory and two renames with rollback on failure;
+it is not an atomic directory exchange. Tasks invoked through `just` share a
+nonblocking workspace lock, so a second task refuses to race a build or clean.
+A process or machine crash during publication can leave a `.PROFILE-previous-*`
+backup in `dist/`; preserve it when recovering an interrupted publication.
+
+Component recipes (`just efi`, `just windows`, `just native`) write **only to
+out/**. They do not update published bundles. Use `just build` when you want a
+complete bundle built from the current sources. Call the `just` recipes rather
+than individual implementation scripts to get task locking and captured logs.
+
+### Profiles and optional builds
+
+| Command | EFI target | Windows configuration | Published bundle |
+|---|---|---|---|
+| `just build` / `just build release` | RELEASE | `-O2 -DNDEBUG` | `dist/release/` |
+| `just build debug` | DEBUG | `-O0 -g -D_DEBUG` | `dist/debug/` |
+| `just build noopt` | NOOPT | `-O0 -g -D_DEBUG` | `dist/noopt/` |
+| `just native [profile]` | not built | native subsystem | none |
+
+Profiles are lowercase. Each has isolated component outputs; debug/noopt cannot
+replace release bundles. Windows has no separate NOOPT configuration, so that
+profile uses the debug compiler flags in a separate output directory.
+
+Every published bundle contains exactly:
+
+```text
+EfiGuardDxe.efi
+Loader.efi
+EfiDSEFix.exe
+SHA256SUMS
+```
+
+`just verify debug` selects a different bundle. Verification checks the complete
+file set and recomputes checksums as well as inspecting PE headers. It does not
+prove that a bundle matches later source edits, nor that it will boot.
+The pipeline does not sign images or create boot entries.
+
+### Logs and cleanup
+
+Full build output is saved to `out/logs/efi-<profile>.log`,
+`windows-<profile>.log`, or `native-<profile>.log`. Successful builds print a
+short summary; failures print the last 80 log lines and the full log path.
+The next build of the same component/profile replaces its log.
+
+```sh
+just clean           # asks for confirmation; removes out/ and dist/ only
+just build           # cold rebuild, reusing deps/
+```
+
+`just --yes clean` skips the confirmation for unattended use. No task runs
+`git clean`, resets edits, deletes dependency checkouts, or changes Git history.
+
+## Dependencies and toolchain details
+
+`scripts/common.sh` pins EDK2 to `edk2-stable202608` and its exact commit. Bootstrap
+initializes only the required EDK2 submodules, plus Zydis and its Zycore dependency
+at the commits recorded by this repository. Existing checkouts at different
+revisions are refused rather than overwritten. Bootstrap can be rerun: the venv
+is reused, Python requirements are installed when their input hash changes,
+and BaseTools uses incremental make. Host tools and EDK2's ranged Python
+requirements are **not** a fully locked or bit-for-bit reproducible toolchain.
+
+EDK2 resolves `EfiGuardPkg/...` through `out/packages/EfiGuardPkg`; its private
+workspace keeps generated Conf/ and Build/ files out of the dependency checkout.
+The added `SafeIntLib` mapping is needed by the loader's current library chain.
+EDK2's optional PDB-copy make rules ignore missing PDB files themselves; there
+is no wrapper exception that converts a failed build into success.
+
+The MinGW build uses the repository's x64 `ntdllp.lib`, an explicit
+`NtProcessStartupW` entry point, and no CRT. The console variant additionally
+links `kernel32` for `WriteConsoleW`. The compatibility headers and the two
+existing source adjustments preserve the upstream Vista-targeted ABI.
+
+The optional native-subsystem executable uses `NtDisplayString` and cannot be
+launched as a normal Win32 process. It stays in
+`out/windows/<profile>/native/`, never in a published bundle.
+
+## Validation status
+
+Local validation on 2026-11-10 passed: release, debug, and noopt bundle builds,
+optional native-subsystem builds, bundle verification, and the pipeline
+regression suite. Debug/noopt/native builds left the release bundle unchanged.
+Existing pinned dependencies were reused.
+
+GCC reports loader LTO type-mismatch warnings for `BmRepairAllControllers`,
+`BmSetMemoryTypeInformationVariable`, and `BmIsAutoCreateBootOption` against the
+pinned EDK2 declarations. These remain in the logs; build success is not runtime
+validation, and this build baseline does not alter those upstream functions.
+
+### Runtime testing
+
+The prior Windows smoke test (2026-11-06, Windows 11 Pro build 26300.9711 with
+Secure Boot enabled) recorded successful help/information commands and expected
+failure statuses without a loaded driver. It did not test authenticated
+requests, loaded-driver operation, or boot compatibility. The EFI images have
+not been boot-tested on this fork yet. Cryptographic authorization and Secure
+Boot reporting remain planned features.
+
+For a manual console smoke test on Windows **without the driver loaded**, copy
+`scripts/test/windev-smoke.ps1` and the console executable to that host, then run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\windev-smoke.ps1 -Path .\EfiDSEFix.exe
+```
+
+This test includes state-changing commands that are expected to fail because
+the driver is absent; it is not a general loaded-driver diagnostic. It skips
+native-subsystem images. No remote access credentials or host-specific paths are
+required by the script.

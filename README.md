@@ -1,3 +1,24 @@
+# EfiGuard — custom fork
+
+This fork is a build-enabled baseline for planned cryptographic authorization
+and Secure Boot state reporting. Those two features are **not implemented yet**.
+
+## Development quick start (Linux)
+
+```sh
+just bootstrap       # first setup only; fetches dependencies
+just doctor          # check the existing environment without network access
+just build           # checks + release builds + validated dist/release/ bundle
+just verify          # verify the published release bundle
+```
+
+Run `just` to list tasks. See the [build guide](docs/build.md) for prerequisites,
+workspace layout, profiles, logs, cleanup, and testing status. Build tooling and
+source code share this repository; generated files are ignored.
+
+The upstream overview and usage documentation follow. Its compatibility claims
+are not a record of runtime validation of this fork.
+
 # Overview
 EfiGuard is a portable x64 UEFI bootkit that patches the Windows boot manager, boot loader and kernel at boot time in order to disable PatchGuard and Driver Signature Enforcement (DSE).
 
@@ -62,6 +83,10 @@ To do this, mount the ESP at `X:` using `mountvol X: /S` and follow the steps ab
 **Note**: some very old or noncompliant firmwares may not support this method of installation at all. On these systems you will have no option but to use the loader instead.
 
 # Compilation
+
+For this fork's Linux workflow, use `just build` and the [build guide](docs/build.md).
+The manual EDK2 and Visual Studio workflows below remain available.
+
 ## Compiling EfiGuardDxe and the loader
 EfiGuard requires EDK2 to build. If you don't have EDK2 installed, follow the steps in [Getting Started with EDK2](https://github.com/tianocore/tianocore.github.io/wiki/Getting-Started-with-EDK-II) first as the EDK2 build system is fairly complex to set up. This section assumes you have a `workspace` directory that your `WORKSPACE` environment variable points to, with a copy of EDK2 checked out in `workspace/edk2`. Supported compilers are MSVC, Clang, GCC and ICC.
 1. Clone the EfiGuard repository into `workspace/edk2/EfiGuardPkg`.
@@ -71,7 +96,8 @@ EfiGuard requires EDK2 to build. If you don't have EDK2 installed, follow the st
 This will produce `EfiGuardDxe.efi` and `Loader.efi` in `workspace/Build/EfiGuard/RELEASE_VS2019/X64`.
 
 ## Compiling EfiDSEFix
-EfiDSEFix requires Visual Studio to build.
+For a native Windows build, EfiDSEFix uses Visual Studio. The Linux workflow above
+cross-compiles it with MinGW-w64 instead.
 1. Open `EfiGuard.sln` and build the solution.
 
 The output binary `EfiDSEFix.exe` will be in `Application/EfiDSEFix/bin`.

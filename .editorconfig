@@ -11,3 +11,19 @@ indent_style = tab
 indent_size = 4
 trim_trailing_whitespace = true
 insert_final_newline = true
+
+[*.{md,py,sh,ps1}]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[justfile]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+insert_final_newline = true

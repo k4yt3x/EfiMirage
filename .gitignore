@@ -1,3 +1,10 @@
+# Local build dependencies, intermediates, bundles, and temporary checks
+/deps/
+/out/
+/dist/
+/.scratch/
+__pycache__/
+
 # Directories
 bin/
 obj/
