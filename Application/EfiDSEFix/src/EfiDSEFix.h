@@ -119,6 +119,10 @@ _vsnwprintf(
 	_In_ va_list ArgList
 	);
 
+// MinGW's <stdlib.h> already declares wcstoul; declaring it again here (with
+// __restrict on the parameters, which this prototype omits) is a hard error
+// rather than a benign redeclaration. Calls still bind to ntdllp.lib's wcstoul.
+#if !defined(__MINGW32__)
 NTSYSAPI
 ULONG
 __cdecl
@@ -127,6 +131,7 @@ wcstoul(
 	_Out_opt_ PWCHAR* EndPtr,
 	_In_ LONG Radix
 	);
+#endif
 
 // Console functions
 WPRINTF_ATTR(1, 2)

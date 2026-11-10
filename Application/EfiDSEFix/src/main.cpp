@@ -246,6 +246,11 @@ ParseCommandLine(
 	}
 }
 
+// extern "C": the linker entry point is selected by name (-e / /ENTRY). Without
+// C linkage the symbol is mangled (_Z17NtProcessStartupWP4_PEB), which is both
+// fragile across toolchain/ABI changes and unnecessary — the function is a
+// plain NTAPI entry point and nothing calls it from C++.
+extern "C"
 NTSTATUS
 NTAPI
 NtProcessStartupW(
