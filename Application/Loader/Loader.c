@@ -359,6 +359,63 @@ SplitConfigLine(
 // Unknown keys and malformed values are reported and skipped; a missing file is not an error.
 // Returns TRUE if a configuration file was found and applied.
 //
+//
+// Temporary diagnostic: drop a marker on the volume so a headless boot can be confirmed.
+//
+STATIC
+VOID
+EFIAPI
+TouchMarkerFile(
+	VOID
+	)
+{
+	STATIC CONST CHAR16 MarkerPath[] = L"\\EFI\\EfiGuard\\loader-ran.txt";
+	STATIC CONST CHAR8 MarkerText[] = "loader reached UefiMain\r\n";
+
+	UINTN NumHandles = 0;
+	EFI_HANDLE* Handles = NULL;
+	if (EFI_ERROR(gBS->LocateHandleBuffer(ByProtocol,
+										&gEfiSimpleFileSystemProtocolGuid,
+										NULL,
+										&NumHandles,
+										&Handles)))
+		return;
+
+	for (UINTN i = 0; i < NumHandles; ++i)
+	{
+		EFI_FILE_IO_INTERFACE* IoDevice = NULL;
+		if (EFI_ERROR(gBS->OpenProtocol(Handles[i],
+										&gEfiSimpleFileSystemProtocolGuid,
+										(VOID**)&IoDevice,
+										gImageHandle,
+										NULL,
+										EFI_OPEN_PROTOCOL_GET_PROTOCOL)))
+			continue;
+
+		EFI_FILE_HANDLE Volume;
+		if (EFI_ERROR(IoDevice->OpenVolume(IoDevice, &Volume)))
+			continue;
+
+		EFI_FILE_HANDLE File;
+		CONST EFI_STATUS Status = Volume->Open(Volume,
+											&File,
+											(CHAR16*)MarkerPath,
+											EFI_FILE_MODE_CREATE | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_READ,
+											0);
+		if (!EFI_ERROR(Status))
+		{
+			UINTN Size = sizeof(MarkerText) - 1;
+			File->Write(File, &Size, (VOID*)MarkerText);
+			File->Close(File);
+			Volume->Close(Volume);
+			break;
+		}
+		Volume->Close(Volume);
+	}
+
+	FreePool(Handles);
+}
+
 STATIC
 BOOLEAN
 EFIAPI
@@ -890,6 +947,7 @@ UefiMain(
 	// Connect all drivers to all controllers
 	//
 	EfiBootManagerConnectAll();
+	TouchMarkerFile();
 
 	//
 	// Set the highest available console mode and clear the screen

@@ -163,6 +163,10 @@ GCC reports loader LTO type-mismatch warnings for `BmRepairAllControllers`,
 pinned EDK2 declarations. These remain in the logs; build success is not runtime
 validation, and this build baseline does not alter those upstream functions.
 
+The loader writes `\EFI\EfiGuard\loader-ran.txt` to the boot volume on every start, so a
+headless boot can be told apart from "the firmware never loaded us". See
+`docs/secureboot.md` for the OVMF boot-entry caveat.
+
 ### Runtime testing
 
 The prior Windows smoke test (2026-11-06, Windows 11 Pro build 26300.9711 with

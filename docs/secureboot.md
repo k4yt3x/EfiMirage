@@ -110,6 +110,22 @@ just test-emulation                  # both variants
 write to the serial port. The runtime variant writes straight to COM1 because `ConOut`
 does not survive `ExitBootServices()`.
 
+## Booting a firmware VM without a console
+
+OVMF does not honour `BootNext` and does not boot a `Boot####` entry that was created by
+copying `{bootmgr}`; both are skipped silently and the next entry is used, which looks
+exactly like a crash. Point the entry the firmware actually boots at the loader instead:
+
+```bat
+bcdedit /copy {bootmgr} /d "EfiGuard Test"     :: only needed once, and not used by OVMF
+bcdedit /set {bootmgr} path \EFI\EfiGuard\Loader.efi
+```
+
+To confirm the firmware really took the entry, the loader writes
+`\EFI\EfiGuard\loader-ran.txt` on every start; delete it before the reboot and check
+whether it comes back. Revert with
+`bcdedit /set {bootmgr} path \EFI\Microsoft\Boot\bootmgfw.efi`.
+
 ## Manual test on real hardware
 
 1. Install the driver and boot through the loader with the feature enabled.
