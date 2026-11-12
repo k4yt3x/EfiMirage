@@ -88,6 +88,10 @@
   # Loader application
   EfiGuardPkg/Application/Loader/Loader.inf
 
+  # Secure Boot emulation self-test, built for the OVMF harness; not part of a bundle
+  EfiGuardPkg/Application/SecureBootTest/SecureBootTest.inf
+  EfiGuardPkg/Application/SecureBootRuntimeTest/SecureBootRuntimeTest.inf
+
 [BuildOptions.Common]
   *_*_*_CC_FLAGS = -D DISABLE_NEW_DEPRECATED_INTERFACES
 

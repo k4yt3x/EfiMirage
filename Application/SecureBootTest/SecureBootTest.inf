@@ -1,0 +1,30 @@
+[Defines]
+  INF_VERSION                    = 0x00010019
+  BASE_NAME                      = SecureBootTest
+  FILE_GUID                      = 3F0F1D7E-6C1B-4C01-9E8A-2B7C5D4A9E31
+  MODULE_TYPE                    = UEFI_APPLICATION
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = UefiMain
+
+[Sources]
+  SecureBootTest.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  EfiGuardPkg/EfiGuardPkg.dec
+
+[LibraryClasses]
+  UefiApplicationEntryPoint
+  UefiBootServicesTableLib
+  UefiRuntimeServicesTableLib
+  UefiLib
+  DevicePathLib
+  MemoryAllocationLib
+  BaseMemoryLib
+
+[Protocols]
+  gEfiGuardDriverProtocolGuid       ## CONSUMES
+  gEfiLoadedImageProtocolGuid       ## CONSUMES
+
+[Guids]
+  gEfiGlobalVariableGuid            ## CONSUMES

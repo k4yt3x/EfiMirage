@@ -45,4 +45,12 @@ for module in EfiGuardDxe Loader; do
         cp "$debug_dir/$module.$extra" "$EFI_OUT/$module.$extra"
     done
 done
+
+# Self-test application for the OVMF harness; kept out of the component output directory
+mkdir -p "$EFI_OUT/test"
+for test_app in SecureBootTest SecureBootRuntimeTest; do
+    [ -f "$BUILD_DIR/$test_app.efi" ] || fail "$test_app.efi is missing after the build"
+    cp "$BUILD_DIR/$test_app.efi" "$EFI_OUT/test/$test_app.efi"
+done
+
 printf 'EFI images: %s\n' "$EFI_OUT"

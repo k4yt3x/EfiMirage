@@ -37,6 +37,10 @@ NTSTATUS
 DumpSystemInformation(
 	);
 
+NTSTATUS
+ReportSecureBootState(
+	);
+
 // pe.cpp
 NTSTATUS
 MapFileSectionView(
@@ -145,14 +149,28 @@ Printf(
 	WCHAR Buffer[512];
 	va_list VaList;
 	va_start(VaList, Format);
-	ULONG N = _vsnwprintf(Buffer, sizeof(Buffer) / sizeof(WCHAR) - 1, Format, VaList);
+	LONG Formatted = _vsnwprintf(Buffer, sizeof(Buffer) / sizeof(WCHAR) - 1, Format, VaList);
+	if (Formatted < 0)
+		Formatted = sizeof(Buffer) / sizeof(WCHAR) - 1;
+	ULONG N = (ULONG)Formatted;
 #if defined(_NATIVE)
 	UNREFERENCED_PARAMETER(N);
 	UNICODE_STRING String;
 	RtlInitUnicodeString(&String, Buffer);
 	NtDisplayString(&String);
 #else
-	WriteConsoleW(NtCurrentPeb()->ProcessParameters->StandardOutput, Buffer, N, &N, NULL);
+	const HANDLE StdOut = NtCurrentPeb()->ProcessParameters->StandardOutput;
+	if (!WriteConsoleW(StdOut, Buffer, N, &N, NULL))
+	{
+		// No console attached (output redirected to a pipe or file): emit UTF-8 bytes instead
+		static CHAR Utf8[sizeof(Buffer) * 3]; // static: keeps the frame under the ___chkstk_ms threshold
+		CONST INT Utf8Length = WideCharToMultiByte(CP_UTF8, 0, Buffer, N, Utf8, sizeof(Utf8), nullptr, nullptr);
+		if (Utf8Length > 0)
+		{
+			ULONG BytesWritten;
+			WriteFile(StdOut, Utf8, (ULONG)Utf8Length, &BytesWritten, nullptr);
+		}
+	}
 #endif
 	va_end(VaList);
 }

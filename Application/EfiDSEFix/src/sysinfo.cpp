@@ -1,5 +1,9 @@
 #include "EfiDSEFix.h"
+#include "EfiCompat.h"
 #include <ntstatus.h>
+#include <Guid/GlobalVariable.h>
+
+extern EFI_GUID gEfiGlobalVariableGuid;
 
 static constexpr PCWCHAR CodeIntegrityOptionNames[] =
 {
@@ -163,4 +167,115 @@ DumpSystemInformation(
 	}
 
 	return Status;
+}
+
+//
+// Reads one EFI variable as a single byte. Returns the NTSTATUS from the firmware call
+// and, on success, the value and its attributes.
+//
+static
+NTSTATUS
+ReadFirmwareBoolean(
+	_In_ PCWCHAR Name,
+	_Out_ PUCHAR Value,
+	_Out_ PULONG Attributes
+	)
+{
+	UNICODE_STRING VariableName;
+	RtlInitUnicodeString(&VariableName, Name);
+
+	ULONG Size = sizeof(*Value);
+	*Value = 0;
+	NTSTATUS Status = NtQuerySystemEnvironmentValueEx(&VariableName,
+													const_cast<LPGUID>(&gEfiGlobalVariableGuid),
+													Value,
+													&Size,
+													Attributes);
+	if (NT_SUCCESS(Status) && Size != sizeof(*Value))
+		return STATUS_BUFFER_TOO_SMALL;
+
+	return Status;
+}
+
+static
+NTSTATUS
+ReadSecureBootRegistryState(
+	_Out_ PULONG Value
+	)
+{
+	*Value = ULONG_MAX;
+
+	RTL_QUERY_REGISTRY_TABLE Table[2] = {};
+	Table[0].Flags = RTL_QUERY_REGISTRY_DIRECT;
+	Table[0].Name = const_cast<PWSTR>(L"UEFISecureBootEnabled");
+	Table[0].EntryContext = Value;
+	Table[0].DefaultType = REG_DWORD;
+	Table[0].DefaultData = Value;
+	Table[0].DefaultLength = sizeof(*Value);
+
+	return RtlQueryRegistryValues(RTL_REGISTRY_ABSOLUTE,
+								L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\SecureBoot\\State",
+								Table,
+								nullptr,
+								nullptr);
+}
+
+//
+// Reports what Windows sees of the Secure Boot state from every source an application can
+// practically use. With EfiGuard's Secure Boot emulation active these all agree on "enabled";
+// on a machine with Secure Boot genuinely off they agree on "disabled".
+//
+NTSTATUS
+ReportSecureBootState(
+	)
+{
+	UCHAR SecureBootValue = 0, SetupModeValue = 0;
+	ULONG SecureBootAttributes = 0, SetupModeAttributes = 0;
+	const NTSTATUS SecureBootStatus = ReadFirmwareBoolean(EFI_SECURE_BOOT_MODE_NAME, &SecureBootValue, &SecureBootAttributes);
+	const NTSTATUS SetupModeStatus = ReadFirmwareBoolean(EFI_SETUP_MODE_NAME, &SetupModeValue, &SetupModeAttributes);
+
+	SYSTEM_SECUREBOOT_INFORMATION SecureBootInfo = {};
+	NTSTATUS SysInfoStatus = NtQuerySystemInformation(SystemSecureBootInformation,
+													&SecureBootInfo,
+													sizeof(SecureBootInfo),
+													nullptr);
+
+	ULONG RegistryValue = ULONG_MAX;
+	const NTSTATUS RegistryStatus = ReadSecureBootRegistryState(&RegistryValue);
+
+	Printf(L"Secure Boot state as observed from user mode:\n");
+
+	if (NT_SUCCESS(SecureBootStatus))
+		Printf(L"  EFI variable SecureBoot:          %hhu (attributes 0x%lX)\n", SecureBootValue, SecureBootAttributes);
+	else
+		Printf(L"  EFI variable SecureBoot:          error 0x%08lX\n", SecureBootStatus);
+
+	if (NT_SUCCESS(SetupModeStatus))
+		Printf(L"  EFI variable SetupMode:           %hhu (attributes 0x%lX)\n", SetupModeValue, SetupModeAttributes);
+	else
+		Printf(L"  EFI variable SetupMode:           error 0x%08lX\n", SetupModeStatus);
+
+	if (NT_SUCCESS(SysInfoStatus))
+		Printf(L"  SystemSecureBootInformation:      enabled %hhu, capable %hhu\n",
+			SecureBootInfo.SecureBootEnabled, SecureBootInfo.SecureBootCapable);
+	else
+		Printf(L"  SystemSecureBootInformation:      error 0x%08lX\n", SysInfoStatus);
+
+	if (NT_SUCCESS(RegistryStatus))
+		Printf(L"  Registry UEFISecureBootEnabled:   %lu\n", RegistryValue);
+	else
+		Printf(L"  Registry UEFISecureBootEnabled:   error 0x%08lX\n", RegistryStatus);
+
+	// An application that requires Secure Boot consults at least one of these. All of them
+	// agreeing on "enabled" with SetupMode off is the state a genuine Secure Boot boot has.
+	const bool ReportedlyEnabled = NT_SUCCESS(SecureBootStatus) && SecureBootValue != 0 &&
+		NT_SUCCESS(SetupModeStatus) && SetupModeValue == 0 &&
+		NT_SUCCESS(SysInfoStatus) && SecureBootInfo.SecureBootEnabled != 0 &&
+		NT_SUCCESS(RegistryStatus) && RegistryValue != 0;
+
+	Printf(L"\n  Verdict: %ls\n", ReportedlyEnabled
+		? L"Secure Boot appears ENABLED from all sources."
+		: L"Secure Boot is not consistently reported as enabled; check the sources above.");
+
+	return ReportedlyEnabled ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 }

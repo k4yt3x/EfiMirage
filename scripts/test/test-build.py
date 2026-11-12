@@ -49,6 +49,8 @@ esac
             for extension in ("debug", "map"):
                 self.write(build / "EfiGuardPkg" / relative / "DEBUG" / f"{module}.{extension}", "old symbols\n")
             self.write(self.root / "out/efi/release" / f"{module}.efi", "old component image\n")
+        for module in ("SecureBootTest", "SecureBootRuntimeTest"):
+            self.write(build / f"{module}.efi", "old cached test image\n")
         self.bundle = self.root / "dist/release/EfiGuardDxe.efi"
         self.write(self.bundle, "last successful bundle\n")
         self.environment = dict(os.environ, PATH=f"{self.bin}{os.pathsep}{os.environ['PATH']}",

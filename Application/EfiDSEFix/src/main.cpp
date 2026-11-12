@@ -15,11 +15,12 @@ PrintUsage(
 		L"    -r, --read%18lsRead current %ls value\n"
 		L"    -d, --disable%15lsDisable DSE\n"
 		L"    -e, --enable%ls%2ls(Re)enable DSE\n"
-		L"    -i, --info%18lsDump system info\n",
+		L"    -i, --info%18lsDump system info\n"
+		L"    -s, --secureboot%12lsReport Secure Boot state as Windows sees it\n",
 		ProgramName, L"", L"",
 		CiOptionsName, L"",
 		(Win8OrHigher ? L" [g_CiOptions]" : L"              "),
-		L"", L"");
+		L"", L"", L"");
 }
 
 int wmain(int argc, wchar_t** argv)
@@ -98,6 +99,12 @@ int wmain(int argc, wchar_t** argv)
 		wcsncmp(argv[1], L"--info", sizeof(L"--info") / sizeof(WCHAR) - 1) == 0)
 	{
 		Status = DumpSystemInformation();
+		goto Exit;
+	}
+	else if (wcsncmp(argv[1], L"-s", sizeof(L"-s") / sizeof(WCHAR) - 1) == 0 ||
+		wcsncmp(argv[1], L"--secureboot", sizeof(L"--secureboot") / sizeof(WCHAR) - 1) == 0)
+	{
+		Status = ReportSecureBootState();
 		goto Exit;
 	}
 	else

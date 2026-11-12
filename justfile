@@ -32,6 +32,11 @@ windows profile="release":
 native profile="release":
     @scripts/workspace.sh native "$1"
 
+# Run the OVMF Secure Boot emulation self-tests (boot and runtime variants).
+test-emulation profile="release":
+    @scripts/test/test-secureboot.sh boot "$1"
+    @scripts/test/test-secureboot.sh runtime "$1"
+
 # Verify the published bundle's PE headers and SHA-256 checksums.
 verify profile="release":
     @scripts/workspace.sh verify "$1"

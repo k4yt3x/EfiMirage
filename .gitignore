@@ -34,3 +34,6 @@ Misc/
 *.suo
 *.VC.db
 *.VC.opendb
+
+# Local test tooling (QEMU/OVMF extracted from packages)
+/.tooling/

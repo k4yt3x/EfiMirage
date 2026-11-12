@@ -13,6 +13,7 @@
   PatchBootmgr.c
   PatchNtoskrnl.c
   PatchWinload.c
+  SecureBoot.c
   pe.c
   util.c
   Zydis/src/Decoder.c

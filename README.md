@@ -1,7 +1,9 @@
 # EfiGuard — custom fork
 
-This fork is a build-enabled baseline for planned cryptographic authorization
-and Secure Boot state reporting. Those two features are **not implemented yet**.
+This fork adds Secure Boot state emulation on top of upstream: the driver can make
+`SecureBoot`, `SetupMode` and `SecureBootEnable` read as enabled to Windows and the
+software on it. See the [Secure Boot emulation guide](docs/secureboot.md). Cryptographic
+authorization of the backdoor is still **not implemented**.
 
 ## Development quick start (Linux)
 
@@ -10,6 +12,7 @@ just bootstrap       # first setup only; fetches dependencies
 just doctor          # check the existing environment without network access
 just build           # checks + release builds + validated dist/release/ bundle
 just verify          # verify the published release bundle
+just test-emulation  # OVMF tests for the Secure Boot emulation (needs .tooling/)
 ```
 
 Run `just` to list tasks. See the [build guide](docs/build.md) for prerequisites,
@@ -29,6 +32,11 @@ If you're just looking to try EfiGuard, skip to [Usage](#usage).
 - Easy to use: can be booted from a USB stick or the Windows EFI partition via a loader that automatically finds and boots Windows. The driver can also be loaded and configured manually using either the UEFI shell or the loader.
 - Makes extensive use of the [Zydis](https://github.com/zyantific/zydis) disassembler library for fast runtime instruction decoding to support more robust analysis than what is possible with signature matching, which often requires changes with new OS updates.
 - Works passively: the driver does not load or start the Windows boot manager. Instead it acts on a load of `bootmgfw.efi` by the firmware boot manager via the boot selection menu or an EFI application such as the loader. If a non-Windows OS is booted, the driver will automatically unload itself.
+- Secure Boot state emulation: makes `SecureBoot`, `SetupMode` and `SecureBootEnable` read as
+  "enabled / user mode" to `winload`, the kernel and user mode, regardless of the firmware
+  state. The firmware's own validation is untouched and TPM measurements still show the
+  truth, so BitLocker PCR 7 sealing is unaffected in the other direction. See
+  [docs/secureboot.md](docs/secureboot.md).
 - Supports four-stage patching for when `bootmgfw.efi` starts `bootmgr.efi` rather than `winload.efi`. This is the case when a WIM file is loaded to boot WinPE, Windows Setup or Windows Recovery mode.
 - Graceful recovery: in case of patch failure, the driver will display error information and prompt to continue booting or to reboot by pressing ESC. This is true even up to the final kernel patch stage, because the last patch stage happens before `ExitBootServices` is called. Many UEFI Windows bootkits hook `OslArchTransferToKernel` which, while easy to find by pattern matching, is a function that executes in protected mode after `ExitBootServices`. This means no boot services are available to tell the user that something went wrong.
   ![bsod](.github/img/BSOD.png)
@@ -65,6 +73,8 @@ Loader vs UEFI driver entry comparison
 3. Boot the machine from the drive you used in step 2.
    Most firmwares provide a boot menu to do this via F8/F10/F11/F12. If not, you will need to configure the BIOS to boot from the new drive.
 4. Windows should now boot, and you should see EfiGuard messages during boot.
+   To configure without the `HOME` prompt, place `\EFI\EfiGuard\EfiGuard.cfg` next to the
+   loader (see [docs/secureboot.md](docs/secureboot.md)).
 5. If you booted with the `SetVariable` hook (the default), run `EfiDSEFix.exe -d` from an Administrator command prompt after boot to disable DSE, or run `EfiDSEFix.exe` to see the full list of options.
 
 Note that you **don't need to use a separate drive** for the loader. If preferable, you can install EfiGuard on the ESP that Windows is already installed on. However, this is somewhat more complicated as you will need to add a UEFI boot entry for the loader.
@@ -76,6 +86,8 @@ To do this, mount the ESP at `X:` using `mountvol X: /S` and follow the steps ab
 2. Copy `EfiGuardDxe.efi` to `X:/EFI/Boot/EfiGuardDxe.efi`.
 3. Boot to the [UEFI Shell](https://github.com/tianocore/edk2/blob/edk2-stable201903/ShellBinPkg/UefiShell/X64/Shell.efi?raw=true) and add a UEFI driver entry: `bcfg driver add 0 EfiGuardDxe.efi "EfiGuardDxe"`.
 4. Windows should now boot, and you should see EfiGuard messages during boot.
+   To configure without the `HOME` prompt, place `\EFI\EfiGuard\EfiGuard.cfg` next to the
+   loader (see [docs/secureboot.md](docs/secureboot.md)).
 5. If you booted with the `SetVariable` hook (the default), run `EfiDSEFix.exe -d` from an Administrator command prompt after boot to disable DSE, or run `EfiDSEFix.exe` to see the full list of options.
 
 **Note**: depending on your firmware, you may need to use "add**p**" in step 3 instead of "add". VirtualBox is known to require this, and possibly some motherboard firmwares do too.

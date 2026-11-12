@@ -31,6 +31,17 @@ extern EFIGUARD_DRIVER_PROTOCOL gEfiGuardDriverProtocol;
 extern EFIGUARD_CONFIGURATION_DATA gDriverConfig;
 
 //
+// (Un)hooks a service table pointer, replacing its value with NewFunction and returning the original address.
+// Also recomputes the service table header checksum.
+//
+VOID*
+SetServicePointer(
+	IN OUT EFI_TABLE_HEADER *ServiceTableHeader,
+	IN OUT VOID **ServiceTableFunction,
+	IN VOID *NewFunction
+	);
+
+//
 // Bootmgfw.efi handle
 //
 extern EFI_HANDLE gBootmgfwHandle;
@@ -214,6 +225,46 @@ typedef struct _KERNEL_PATCH_INFORMATION
 } KERNEL_PATCH_INFORMATION;
 
 extern KERNEL_PATCH_INFORMATION gKernelPatchInfo;
+
+
+//
+// EFI Secure Boot state emulation (SecureBoot.c)
+//
+
+//
+// gRT->GetVariable hook. Answers SecureBoot, SetupMode and SecureBootEnable when
+// gDriverConfig.FakeSecureBoot is set and forwards everything else.
+//
+EFI_STATUS
+EFIAPI
+HookedGetVariable(
+	IN CHAR16* VariableName,
+	IN EFI_GUID* VendorGuid,
+	OUT UINT32* Attributes OPTIONAL,
+	IN OUT UINTN* DataSize,
+	OUT VOID* Data OPTIONAL
+	);
+
+//
+// Installs, restores and virtualizes the GetVariable hook. Install is idempotent.
+//
+EFI_STATUS
+EFIAPI
+InstallSecureBootHook(
+	VOID
+	);
+
+VOID
+EFIAPI
+UninstallSecureBootHook(
+	VOID
+	);
+
+VOID
+EFIAPI
+SecureBootConvertRuntimePointers(
+	VOID
+	);
 
 
 //

@@ -10,6 +10,7 @@
 #include <Library/DebugLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <Library/ReportStatusCodeLib.h>
+#include <Library/BaseMemoryLib.h>
 #include <Library/DevicePathLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiBootManagerLib.h>
@@ -20,6 +21,8 @@
 // Paths to the driver to try
 //
 #define EFIGUARD_DRIVER_FILENAME		L"EfiGuardDxe.efi"
+#define EFIGUARD_CONFIG_FILENAME		L"\\EFI\\EfiGuard\\EfiGuard.cfg"
+#define EFIGUARD_CONFIG_MAX_CHARS		1024
 STATIC CHAR16* mDriverPaths[] = {
 	L"\\EFI\\Boot\\" EFIGUARD_DRIVER_FILENAME,
 	L"\\EFI\\" EFIGUARD_DRIVER_FILENAME,
@@ -256,6 +259,211 @@ LocateFile(
 }
 
 //
+// Opens a file on the first volume that has it. Caller closes both handles.
+//
+STATIC
+EFI_STATUS
+EFIAPI
+OpenFileOnAnyVolume(
+	IN CONST CHAR16* Path,
+	OUT EFI_FILE_HANDLE* FileHandle,
+	OUT EFI_FILE_HANDLE* VolumeHandleOut
+	)
+{
+	*FileHandle = NULL;
+	*VolumeHandleOut = NULL;
+
+	UINTN NumHandles = 0;
+	EFI_HANDLE* Handles = NULL;
+	EFI_STATUS Status = gBS->LocateHandleBuffer(ByProtocol,
+												&gEfiSimpleFileSystemProtocolGuid,
+												NULL,
+												&NumHandles,
+												&Handles);
+	if (EFI_ERROR(Status))
+		return Status;
+
+	for (UINTN i = 0; i < NumHandles; ++i)
+	{
+		EFI_FILE_IO_INTERFACE* IoDevice = NULL;
+		Status = gBS->OpenProtocol(Handles[i],
+									&gEfiSimpleFileSystemProtocolGuid,
+									(VOID**)&IoDevice,
+									gImageHandle,
+									NULL,
+									EFI_OPEN_PROTOCOL_GET_PROTOCOL);
+		if (EFI_ERROR(Status))
+			continue;
+
+		EFI_FILE_HANDLE VolumeHandle = NULL;
+		if (EFI_ERROR(IoDevice->OpenVolume(IoDevice, &VolumeHandle)))
+			continue;
+
+		Status = VolumeHandle->Open(VolumeHandle,
+									FileHandle,
+									(CHAR16*)Path,
+									EFI_FILE_MODE_READ,
+									EFI_FILE_READ_ONLY);
+		if (EFI_ERROR(Status))
+		{
+			VolumeHandle->Close(VolumeHandle);
+			continue;
+		}
+
+		*VolumeHandleOut = VolumeHandle;
+		FreePool(Handles);
+		return EFI_SUCCESS;
+	}
+
+	FreePool(Handles);
+	return Status;
+}
+
+//
+// Reads and trims one "key = value" line in place. Returns FALSE for blank and comment lines.
+//
+STATIC
+BOOLEAN
+EFIAPI
+SplitConfigLine(
+	IN OUT CHAR16* Line,
+	OUT CHAR16** Key,
+	OUT CHAR16** Value
+	)
+{
+	while (*Line == L' ' || *Line == L'\t')
+		++Line;
+	if (*Line == L'\0' || *Line == L'#' || *Line == L'\r' || *Line == L'\n')
+		return FALSE;
+
+	CHAR16* Separator = StrStr(Line, L"=");
+	if (Separator == NULL)
+		return FALSE;
+
+	*Separator = L'\0';
+	*Key = Line;
+	*Value = Separator + 1;
+
+	for (CHAR16* End = *Key + StrLen(*Key); End > *Key && (End[-1] == L' ' || End[-1] == L'\t'); --End)
+		End[-1] = L'\0';
+	while (**Value == L' ' || **Value == L'\t')
+		++*Value;
+	for (CHAR16* End = *Value + StrLen(*Value); End > *Value && (End[-1] == L' ' || End[-1] == L'\t' || End[-1] == L'\r' || End[-1] == L'\n'); --End)
+		End[-1] = L'\0';
+
+	return TRUE;
+}
+
+//
+// Applies \EFI\EfiGuard\EfiGuard.cfg, if present, over the defaults in ConfigData.
+// Unknown keys and malformed values are reported and skipped; a missing file is not an error.
+// Returns TRUE if a configuration file was found and applied.
+//
+STATIC
+BOOLEAN
+EFIAPI
+LoadConfigurationFile(
+	IN OUT EFIGUARD_CONFIGURATION_DATA* ConfigData
+	)
+{
+	EFI_FILE_HANDLE File = NULL;
+	EFI_FILE_HANDLE Volume = NULL;
+	CONST EFI_STATUS OpenStatus = OpenFileOnAnyVolume(EFIGUARD_CONFIG_FILENAME, &File, &Volume);
+	if (EFI_ERROR(OpenStatus))
+		return FALSE;
+
+	UINT8* Raw = AllocateZeroPool(EFIGUARD_CONFIG_MAX_CHARS);
+	CHAR16* Buffer = AllocateZeroPool(EFIGUARD_CONFIG_MAX_CHARS * sizeof(CHAR16));
+	if (Raw == NULL || Buffer == NULL)
+	{
+		File->Close(File);
+		Volume->Close(Volume);
+		if (Raw != NULL)
+			FreePool(Raw);
+		if (Buffer != NULL)
+			FreePool(Buffer);
+		return FALSE;
+	}
+
+	UINTN RawSize = EFIGUARD_CONFIG_MAX_CHARS - 1;
+	CONST EFI_STATUS Status = File->Read(File, &RawSize, Raw);
+	File->Close(File);
+	Volume->Close(Volume);
+	if (EFI_ERROR(Status))
+	{
+		FreePool(Raw);
+		FreePool(Buffer);
+		return FALSE;
+	}
+
+	// Accept UTF-16LE with or without a BOM, and plain ASCII/UTF-8 for bytes below 0x80.
+	// Everything here is a hand-maintained config file, not user data worth a full decoder.
+	UINTN Length = 0;
+	CONST BOOLEAN Wide = RawSize >= 2 && ((Raw[0] == 0xFF && Raw[1] == 0xFE) || Raw[1] == 0x00);
+	CONST UINTN Start = (RawSize >= 2 && Raw[0] == 0xFF && Raw[1] == 0xFE) ? 2 : 0;
+	if (Wide)
+	{
+		Length = (RawSize - Start) / sizeof(CHAR16);
+		CopyMem(Buffer, Raw + Start, Length * sizeof(CHAR16));
+	}
+	else
+	{
+		for (UINTN i = 0; i < RawSize; ++i)
+		{
+			if (Raw[i] >= 0x80)
+			{
+				Print(L"[LOADER] Non-ASCII byte 0x%02x at offset %u; save the file as UTF-16LE.\r\n", (UINTN)Raw[i], i);
+				break;
+			}
+			Buffer[Length++] = (CHAR16)Raw[i];
+		}
+	}
+	Buffer[Length] = L'\0';
+	FreePool(Raw);
+
+	Print(L"[LOADER] Applying configuration from %s.\r\n", EFIGUARD_CONFIG_FILENAME);
+
+	CHAR16* Line = Buffer;
+	while (*Line != L'\0')
+	{
+		CHAR16* LineEnd = StrStr(Line, L"\n");
+		if (LineEnd != NULL)
+			*LineEnd = L'\0';
+
+		CHAR16* Key;
+		CHAR16* Value;
+		if (SplitConfigLine(Line, &Key, &Value))
+		{
+			Print(L"[LOADER] cfg: %s = %s\r\n", Key, Value);
+			if (StriStr(Key, L"DseBypass") == Key)
+			{
+				if (StriStr(Value, L"hook") == Value)
+					ConfigData->DseBypassMethod = DSE_DISABLE_SETVARIABLE_HOOK;
+				else if (StriStr(Value, L"boot") == Value)
+					ConfigData->DseBypassMethod = DSE_DISABLE_AT_BOOT;
+				else if (StriStr(Value, L"none") == Value)
+					ConfigData->DseBypassMethod = DSE_DISABLE_NONE;
+				else
+					Print(L"[LOADER] Unknown DseBypass value \"%s\"; keeping %%u.\r\n", Value, (UINTN)ConfigData->DseBypassMethod);
+			}
+			else if (StriStr(Key, L"WaitForKeyPress") == Key)
+				ConfigData->WaitForKeyPress = (BOOLEAN)(StrCmp(Value, L"1") == 0);
+			else if (StriStr(Key, L"FakeSecureBoot") == Key)
+				ConfigData->FakeSecureBoot = (BOOLEAN)(StrCmp(Value, L"1") == 0);
+			else
+				Print(L"[LOADER] Unknown configuration key \"%s\"; ignored.\r\n", Key);
+		}
+
+		if (LineEnd == NULL)
+			break;
+		Line = LineEnd + 1;
+	}
+
+	FreePool(Buffer);
+	return TRUE;
+}
+
+//
 // Find the optimal available console output mode and set it if it's not already the current mode
 //
 STATIC
@@ -367,12 +575,21 @@ StartEfiGuard(
 		goto Exit;
 	}
 
-	if (InteractiveConfiguration)
+	//
+	// Driver configuration: a configuration file wins, otherwise ask if the user held HOME.
+	//
+	EFIGUARD_CONFIGURATION_DATA ConfigData = {
+		DSE_DISABLE_SETVARIABLE_HOOK,
+		FALSE,
+		FALSE,
+		{ 0, 0 },
+		EFIGUARD_CONFIGURATION_DATA_VERSION
+	};
+	CONST BOOLEAN ConfiguredFromFile = LoadConfigurationFile(&ConfigData);
+
+	if (!ConfiguredFromFile && InteractiveConfiguration)
 	{
-		//
-		// Interactive driver configuration
-		//
-		Print(L"\r\nChoose the type of DSE bypass to use, or press ENTER for default:\r\n"
+		Print(L"\nChoose the type of DSE bypass to use, or press ENTER for default:\r\n"
 			L"    [1] Runtime SetVariable hook (default)\r\n    [2] Boot time DSE bypass\r\n    [3] No DSE bypass\r\n    ");
 		CONST UINT16 AcceptedDseBypasses[] = { L'1', L'2', L'3' };
 		CONST UINT16 SelectedDseBypass = PromptInput(AcceptedDseBypasses,
@@ -386,7 +603,12 @@ StartEfiGuard(
 														sizeof(NoYes) / sizeof(UINT16),
 														L'1');
 
-		EFIGUARD_CONFIGURATION_DATA ConfigData;
+		Print(L"Report Secure Boot as enabled to Windows and software running on it?\n"
+			L"    [1] No (default)\r\n    [2] Yes (emulate Secure Boot)\r\n    ");
+		CONST UINT16 SelectedFakeSecureBoot = PromptInput(NoYes,
+														sizeof(NoYes) / sizeof(UINT16),
+														L'1');
+
 		switch (SelectedDseBypass)
 		{
 		case L'1':
@@ -401,7 +623,11 @@ StartEfiGuard(
 			break;
 		}
 		ConfigData.WaitForKeyPress = (BOOLEAN)(SelectedWaitForKeyPress == L'2');
+		ConfigData.FakeSecureBoot = (BOOLEAN)(SelectedFakeSecureBoot == L'2');
+	}
 
+	if (ConfiguredFromFile || InteractiveConfiguration)
+	{
 		//
 		// Send the configuration data to the driver
 		//

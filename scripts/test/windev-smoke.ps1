@@ -57,6 +57,9 @@ $expected = [ordered]@{
     '-c' = 0xC000000D
     '-r' = 0xC000000D
     '-d' = 0xC000000D
+    # Reads firmware variables and the registry only; 0 when every source agrees. A
+    # machine with Secure Boot genuinely off reports 1, so both are accepted.
+    '-s' = 0x00000000
 }
 
 $failed = 0
@@ -84,7 +87,9 @@ foreach ($a in $expected.Keys) {
 
     $want = $expected[$a]
     $got32 = $got -band 0xFFFFFFFF
-    $ok = ($got32 -eq $want)
+    # -s is a report, not an action: 1 means "not consistently enabled", which is a
+    # legitimate result on firmware without Secure Boot rather than a failure.
+    $ok = ($got32 -eq $want) -or ($a -eq '-s' -and $got32 -in 0, 1)
     if (-not $ok) { $failed++ }
     '{0,-5} want 0x{1:X8} got 0x{2:X8}  {3}' -f "[$a]", $want, $got32, $(if ($ok) {'ok'} else {'MISMATCH'})
 }

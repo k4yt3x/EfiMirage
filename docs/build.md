@@ -11,6 +11,7 @@ just bootstrap       # one-time dependency setup; requires network access
 just doctor          # offline prerequisite and pinned-revision checks
 just build           # checks, RELEASE EFI + Windows console builds, publication
 just verify          # recheck dist/release/ headers and checksums
+just test-emulation  # OVMF self-tests for the Secure Boot emulation
 ```
 
 On Arch Linux, host prerequisites are `just git make python gcc nasm
@@ -19,22 +20,27 @@ used. Bootstrap installs Python dependencies only inside `deps/venv`; it does
 not install host packages. Wine and MSVC are not needed for cross-compilation.
 
 `just check` needs only `just`, Python, a POSIX shell, standard utilities, and
-`flock`; it does not need EDK2, MinGW, or network access. `just doctor` checks
+`flock`; it does not need EDK2, MinGW, network access, or the QEMU tooling.
+`just test-emulation` boots the images in OVMF and needs the private QEMU + OVMF
+under `.tooling/`; prepare it once with `python3 scripts/test/fetch-ovmf.py`
+(see `docs/secureboot.md`). `just doctor` checks
 build tools and dependency checkouts, not Windows/firmware runtime compatibility.
 
 ## Workspace layout
 
 ```text
 Application/             upstream Loader and EfiDSEFix sources
+  SecureBootTest/        OVMF boot-services self-test for the emulation
+  SecureBootRuntimeTest/ OVMF post-SetVirtualAddressMap self-test
 EfiGuardDxe/             upstream runtime driver and Zydis submodule
 Include/                 shared driver/loader/client interfaces
 EfiGuardPkg.{dsc,dec}     EDK2 package definitions
 EfiGuard.sln, *.props     native Visual Studio build definitions
 justfile                 supported task entry points
 scripts/                 build orchestration and artifact verification
+  test/                  pipeline regression tests, OVMF harness, Windows smoke test
   compat/mingw/          Windows headers needed for Linux cross-compilation
-  test/                  pipeline regression tests and Windows smoke test
-docs/                    this guide
+docs/                    this guide and the Secure Boot emulation guide
 
 deps/                    ignored: pinned EDK2 checkout, Python venv, task lock
 out/                     ignored: intermediate and component build products
@@ -46,6 +52,7 @@ out/                     ignored: intermediate and component build products
   bootstrap/             generated Python requirements
 dist/<profile>/          ignored: complete, verified deployment bundle
 .scratch/                ignored: temporary regression-test workspaces
+.tooling/                ignored: private QEMU + OVMF for the emulation tests
 ```
 
 Source, scripts, tests, and documentation belong to the same Git repository.

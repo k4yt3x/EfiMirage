@@ -46,15 +46,16 @@ typedef enum _EFIGUARD_DSE_BYPASS_TYPE {
 
 //
 // Kernel read/write backdoor struct, used in combination with DSE bypass type DSE_DISABLE_SETVARIABLE_HOOK.
-// For scalar values, use one of the Byte through Qword fields, set its size in Size, and set IsMemCopy to FALSE.
+// For scalar values, use one of the Byte through Qword fields, set its size in Size, and set ReadOnly to FALSE.
 // For writes, the field that was used to supply the data will contain the original value on return.
 //
-// To perform a memcpy, set UserBuffer to a pointer-aligned buffer, Size to the size of the buffer, and IsMemCopy to TRUE.
-// There is no SEH in UEFI for buffer probing, so it is the caller's responsibility that the address is valid and correctly aligned.
-// No backup of the original buffer will be made because this would require memory allocation at runtime. If you wish to obtain
-// the contents of the current data at KernelAddress, call the backdoor twice with the first call having IsReadOperation = TRUE.
+// To perform a memcpy, set UserBuffer to a pointer-aligned buffer, Size to the size of the buffer, and
+// ReadOnly to FALSE. There is no SEH in UEFI for buffer probing, so it is the caller's responsibility that
+// the address is valid and correctly aligned. No backup of the original buffer will be made because this
+// would require memory allocation at runtime. If you wish to obtain the contents of the current data at
+// KernelAddress, call the backdoor twice with the first call having ReadOnly = TRUE (or use a scalar size).
 //
-// If IsReadOperation is TRUE, no writes to kernel memory will be performed. Instead either
+// If ReadOnly is TRUE, no writes to kernel memory will be performed. Instead either
 // (1) one of the Byte through Qword fields (depending on size) will contain the value at KernelAddress, or
 // (2) the memcpy performed will be in the opposite direction, i.e. from KernelAddress to UserBuffer.
 //
@@ -88,6 +89,12 @@ typedef struct _EFIGUARD_BACKDOOR_DATA {
 
 
 //
+// Configuration data version. Must equal the value below or Configure() is refused.
+//
+#define EFIGUARD_CONFIGURATION_DATA_VERSION 1
+
+
+//
 // Main driver configuration data. This can be optionally sent to the driver using the Configure() pointer in the protocol.
 //
 typedef struct _EFIGUARD_CONFIGURATION_DATA {
@@ -103,6 +110,22 @@ typedef struct _EFIGUARD_CONFIGURATION_DATA {
 	// Default: FALSE
 	//
 	BOOLEAN WaitForKeyPress;
+
+	//
+	// Whether to make the firmware's EFI Secure Boot state look enabled to everything that reads it.
+	// SecureBoot is reported as 1 and SetupMode as 0 for both boot services and runtime callers, so
+	// winload, the kernel and user mode all observe a consistent "Secure Boot on, user mode" state
+	// regardless of the actual firmware configuration. See docs/secureboot.md for the limits of this.
+	// Default: FALSE
+	//
+	BOOLEAN FakeSecureBoot;
+
+	UINT8 Reserved[2];
+
+	//
+	// Must be EFIGUARD_CONFIGURATION_DATA_VERSION.
+	//
+	UINT32 Version;
 } EFIGUARD_CONFIGURATION_DATA;
 
 

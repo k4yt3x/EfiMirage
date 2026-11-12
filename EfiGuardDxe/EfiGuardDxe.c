@@ -43,7 +43,10 @@ EFIGUARD_DRIVER_PROTOCOL gEfiGuardDriverProtocol =
 //
 EFIGUARD_CONFIGURATION_DATA gDriverConfig = {
 	DSE_DISABLE_SETVARIABLE_HOOK,	// DseBypassMethod
-	FALSE							// WaitForKeyPress
+	FALSE,							// WaitForKeyPress
+	FALSE,							// FakeSecureBoot
+	{ 0, 0 },						// Reserved
+	EFIGUARD_CONFIGURATION_DATA_VERSION
 };
 
 //
@@ -243,7 +246,9 @@ HookedSetVariable(
 	)
 {
 	// We should not be hooking the runtime table after ExitBootServices() unless this is the selected DSE bypass method
-	ASSERT(!gEfiAtRuntime || (gDriverConfig.DseBypassMethod == DSE_DISABLE_SETVARIABLE_HOOK && gBootmgfwHandle != NULL));
+	// or Secure Boot emulation needs the hook to survive.
+	ASSERT(!gEfiAtRuntime || gDriverConfig.FakeSecureBoot ||
+		(gDriverConfig.DseBypassMethod == DSE_DISABLE_SETVARIABLE_HOOK && gBootmgfwHandle != NULL));
 
 	// Do we have a match for the variable name and vendor GUID?
 	if (gEfiAtRuntime && gEfiGoneVirtual &&
@@ -394,10 +399,12 @@ ExitBootServicesEvent(
 			gST->ConOut->ClearScreen(gST->ConOut);
 	}
 
-	// If the DSE bypass method is *not* DSE_DISABLE_SETVARIABLE_HOOK, perform some cleanup now. In principle this should allow
-	// linking with /SUBSYSTEM:EFI_BOOT_SERVICE_DRIVER, because our driver image may be freed after this callback returns.
-	// Using DSE_DISABLE_SETVARIABLE_HOOK requires linking with /SUBSYSTEM:EFI_RUNTIME_DRIVER, because the image must not be freed.
-	if (gDriverConfig.DseBypassMethod != DSE_DISABLE_SETVARIABLE_HOOK || gBootmgfwHandle == NULL)
+	// Keep the runtime table hooks only if something still needs them: Secure Boot emulation for any OS, or
+	// the SetVariable backdoor for a Windows boot that actually happened. When nothing is needed, perform the
+	// cleanup now so the image may be freed after this callback returns; otherwise the driver must stay linked
+	// as /SUBSYSTEM:EFI_RUNTIME_DRIVER and mapped.
+	CONST BOOLEAN KeepSetVariableHook = gDriverConfig.DseBypassMethod == DSE_DISABLE_SETVARIABLE_HOOK && gBootmgfwHandle != NULL;
+	if (!KeepSetVariableHook && !gDriverConfig.FakeSecureBoot)
 	{
 		// Uninstall our installed driver protocols
 		gBS->UninstallMultipleProtocolInterfaces(gImageHandle,
@@ -420,6 +427,9 @@ ExitBootServicesEvent(
 			SetServicePointer(&gRT->Hdr, (VOID**)&gRT->SetVariable, (VOID*)mOriginalSetVariable);
 			mOriginalSetVariable = NULL;
 		}
+
+		// Unhook gRT->GetVariable
+		UninstallSecureBootHook();
 	}
 
 	// Regardless of which OS is being booted, boot services won't be available after this callback returns
@@ -446,6 +456,9 @@ SetVirtualAddressMapEvent(
 	EFI_STATUS Status = gRT->ConvertPointer(0, (VOID**)&mOriginalSetVariable);
 	ASSERT_EFI_ERROR(Status);
 
+	// Same for the original GetVariable pointer if the Secure Boot emulation hook is still installed
+	SecureBootConvertRuntimePointers();
+
 	// Convert the runtime services pointer itself from physical to virtual
 	Status = gRT->ConvertPointer(0, (VOID**)&gRT);
 	ASSERT_EFI_ERROR(Status);
@@ -467,9 +480,24 @@ DriverConfigure(
 	if (ConfigurationData == NULL)
 		return EFI_INVALID_PARAMETER;
 
+	if (ConfigurationData->Version != EFIGUARD_CONFIGURATION_DATA_VERSION)
+	{
+		Print(L"Configuration data version mismatch: got %u, expected %u.\r\n",
+			(UINTN)ConfigurationData->Version, (UINTN)EFIGUARD_CONFIGURATION_DATA_VERSION);
+		return EFI_INCOMPATIBLE_VERSION;
+	}
+
+	// Validate before committing anything: an out-of-range method would silently fall through to
+	// DSE_DISABLE_NONE in the patch stages.
+	if (ConfigurationData->DseBypassMethod > DSE_DISABLE_SETVARIABLE_HOOK)
+		return EFI_INVALID_PARAMETER;
+
 	gDriverConfig = *ConfigurationData;
 
-	Print(L"Configuration data accepted.\r\n\r\n");
+	Print(L"Configuration data accepted: DSE bypass %u, wait for keypress %u, fake Secure Boot %u.\r\n\r\n",
+		(UINTN)gDriverConfig.DseBypassMethod,
+		(UINTN)gDriverConfig.WaitForKeyPress,
+		(UINTN)gDriverConfig.FakeSecureBoot);
 
 	return EFI_SUCCESS;
 }
@@ -526,6 +554,9 @@ EfiGuardUnload(
 		SetServicePointer(&gBS->Hdr, (VOID**)&gBS->LoadImage, (VOID*)mOriginalLoadImage);
 		mOriginalLoadImage = NULL;
 	}
+
+	// Unhook gRT->GetVariable
+	UninstallSecureBootHook();
 
 	return EFI_SUCCESS;
 }
@@ -613,6 +644,14 @@ EfiGuardInitialize(
 	//
 	mOriginalSetVariable = (EFI_SET_VARIABLE)SetServicePointer(&gRT->Hdr, (VOID**)&gRT->SetVariable, (VOID*)&HookedSetVariable);
 	Print(L"Hooked gRT->SetVariable: 0x%p -> 0x%p\r\n", (VOID*)mOriginalSetVariable, (VOID*)&HookedSetVariable);
+
+	//
+	// Hook gRT->GetVariable for Secure Boot emulation. Installed unconditionally; the hook is a
+	// pass-through until Configure() turns gDriverConfig.FakeSecureBoot on.
+	//
+	Status = InstallSecureBootHook();
+	if (EFI_ERROR(Status))
+		goto Exit;
 
 	// Register notification callback for ExitBootServices()
 	Status = gBS->CreateEventEx(EVT_NOTIFY_SIGNAL,
