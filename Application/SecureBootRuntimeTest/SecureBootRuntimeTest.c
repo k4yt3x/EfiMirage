@@ -215,6 +215,12 @@ UefiMain(
 		gBS->Exit(ImageHandle, EFI_ABORTED, 0, NULL);
 	}
 
+	// The default is on, so it must already be emulated before Configure() runs
+	UINT8 DefaultValue = 0xFF;
+	UINTN DefaultSize = sizeof(DefaultValue);
+	Status = gRT->GetVariable((CHAR16*)EFI_SECURE_BOOT_MODE_NAME, &gEfiGlobalVariableGuid, NULL, &DefaultSize, &DefaultValue);
+	Check(!EFI_ERROR(Status) && DefaultValue == 1, L"emulation is on by default, before any configuration");
+
 	EFIGUARD_CONFIGURATION_DATA ConfigData = {
 		DSE_DISABLE_NONE,
 		FALSE,

@@ -32,9 +32,9 @@ If you're just looking to try EfiGuard, skip to [Usage](#usage).
 - Easy to use: can be booted from a USB stick or the Windows EFI partition via a loader that automatically finds and boots Windows. The driver can also be loaded and configured manually using either the UEFI shell or the loader.
 - Makes extensive use of the [Zydis](https://github.com/zyantific/zydis) disassembler library for fast runtime instruction decoding to support more robust analysis than what is possible with signature matching, which often requires changes with new OS updates.
 - Works passively: the driver does not load or start the Windows boot manager. Instead it acts on a load of `bootmgfw.efi` by the firmware boot manager via the boot selection menu or an EFI application such as the loader. If a non-Windows OS is booted, the driver will automatically unload itself.
-- Secure Boot state emulation: makes `SecureBoot`, `SetupMode` and `SecureBootEnable` read as
-  "enabled / user mode" to `winload`, the kernel and user mode, regardless of the firmware
-  state. The firmware's own validation is untouched and TPM measurements still show the
+- Secure Boot state emulation, on by default: makes `SecureBoot`, `SetupMode` and
+  `SecureBootEnable` read as "enabled / user mode" to `winload`, the kernel and user mode,
+  regardless of the firmware state. The firmware's own validation is untouched and TPM measurements still show the
   truth, so BitLocker PCR 7 sealing is unaffected in the other direction. See
   [docs/secureboot.md](docs/secureboot.md).
 - Supports four-stage patching for when `bootmgfw.efi` starts `bootmgr.efi` rather than `winload.efi`. This is the case when a WIM file is loaded to boot WinPE, Windows Setup or Windows Recovery mode.

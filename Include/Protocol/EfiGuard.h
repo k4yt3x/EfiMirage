@@ -116,7 +116,7 @@ typedef struct _EFIGUARD_CONFIGURATION_DATA {
 	// SecureBoot is reported as 1 and SetupMode as 0 for both boot services and runtime callers, so
 	// winload, the kernel and user mode all observe a consistent "Secure Boot on, user mode" state
 	// regardless of the actual firmware configuration. See docs/secureboot.md for the limits of this.
-	// Default: FALSE
+	// Default: TRUE
 	//
 	BOOLEAN FakeSecureBoot;
 

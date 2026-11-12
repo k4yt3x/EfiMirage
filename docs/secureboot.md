@@ -33,10 +33,12 @@ runtime driver and its image is kept mapped past `ExitBootServices()`; the origi
 `GetVariable` pointer is converted in the `SetVirtualAddressMap()` notification so runtime
 calls still reach the firmware.
 
-## Enabling it
+## Turning it on and off
 
-Loader, boot with the driver present, press `HOME` within 1.5 seconds and answer yes to
-"Report Secure Boot as enabled to Windows and software running on it?". The default is off.
+Emulation is **on by default** whenever the driver loads, including when it is installed as a
+firmware driver entry with no loader involved. To turn it off for one boot, press `HOME`
+within 1.5 seconds in the loader and answer No to "Report Secure Boot as enabled to Windows
+and software running on it?".
 
 For unattended boots, put `\EFI\EfiGuard\EfiGuard.cfg` on the same volume as the loader.
 If it exists it is applied and the prompts are skipped; if it is absent or unreadable, the
@@ -46,7 +48,7 @@ If it exists it is applied and the prompts are skipped; if it is absent or unrea
 # EfiGuard.cfg; UTF-16LE or ASCII, case-insensitive keys, '#' starts a comment
 DseBypass = hook        # hook | boot | none
 WaitForKeyPress = 0
-FakeSecureBoot = 1
+FakeSecureBoot = 0      # omit to keep the default (on)
 ```
 
 Unknown keys and unknown values are reported on screen and ignored, so an old config keeps

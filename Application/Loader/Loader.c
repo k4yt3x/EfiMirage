@@ -638,7 +638,7 @@ StartEfiGuard(
 	EFIGUARD_CONFIGURATION_DATA ConfigData = {
 		DSE_DISABLE_SETVARIABLE_HOOK,
 		FALSE,
-		FALSE,
+		TRUE,
 		{ 0, 0 },
 		EFIGUARD_CONFIGURATION_DATA_VERSION
 	};
@@ -661,10 +661,10 @@ StartEfiGuard(
 														L'1');
 
 		Print(L"Report Secure Boot as enabled to Windows and software running on it?\n"
-			L"    [1] No (default)\r\n    [2] Yes (emulate Secure Boot)\r\n    ");
+			L"    [1] No\r\n    [2] Yes (default)\r\n    ");
 		CONST UINT16 SelectedFakeSecureBoot = PromptInput(NoYes,
 														sizeof(NoYes) / sizeof(UINT16),
-														L'1');
+														L'2');
 
 		switch (SelectedDseBypass)
 		{

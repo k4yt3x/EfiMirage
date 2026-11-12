@@ -7,7 +7,7 @@
 - Secure Boot state emulation: `gRT->GetVariable` is hooked to report `SecureBoot` as enabled
   and `SetupMode` as user mode, so Windows and software on it see a secure boot chain even on
   firmware without one. Configured per boot through the loader menu or
-  `EFIGUARD_CONFIGURATION_DATA.FakeSecureBoot`. See `docs/secureboot.md`.
+  `EFIGUARD_CONFIGURATION_DATA.FakeSecureBoot`. On by default; see `docs/secureboot.md`.
 - `EFIGUARD_CONFIGURATION_DATA` now carries a `Version`; mismatched or out-of-range
   configuration is refused instead of partially applied.
 - `EfiDSEFix.exe -s/--secureboot` reports the Secure Boot state from the firmware variables,

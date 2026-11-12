@@ -44,7 +44,7 @@ EFIGUARD_DRIVER_PROTOCOL gEfiGuardDriverProtocol =
 EFIGUARD_CONFIGURATION_DATA gDriverConfig = {
 	DSE_DISABLE_SETVARIABLE_HOOK,	// DseBypassMethod
 	FALSE,							// WaitForKeyPress
-	FALSE,							// FakeSecureBoot
+	TRUE,							// FakeSecureBoot
 	{ 0, 0 },						// Reserved
 	EFIGUARD_CONFIGURATION_DATA_VERSION
 };

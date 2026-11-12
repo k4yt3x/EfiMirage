@@ -145,6 +145,16 @@ UefiMain(
 	if (Protocol == NULL)
 		goto Done;
 
+	// Emulation must already be on from the default configuration alone
+	Value = 0xFF;
+	Size = sizeof(Value);
+	Status = ReadFakeVariable(EFI_SECURE_BOOT_MODE_NAME, NULL, &Size, &Value);
+	Check(!EFI_ERROR(Status) && Value == 1, L"emulation is on by default, before any configuration");
+	Value = 0xFF;
+	Size = sizeof(Value);
+	Status = ReadFakeVariable(EFI_SETUP_MODE_NAME, NULL, &Size, &Value);
+	Check(!EFI_ERROR(Status) && Value == 0, L"SetupMode is faked by default too");
+
 	// A version mismatch must be refused rather than misread
 	EFI_STATUS ConfigureStatus;
 	ConfigureDriver(Protocol, DSE_DISABLE_NONE, TRUE,
