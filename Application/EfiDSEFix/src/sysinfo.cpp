@@ -212,7 +212,6 @@ ReadSecureBootRegistryState(
 	Table[0].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_REQUIRED;
 	Table[0].Name = const_cast<PWSTR>(L"UEFISecureBootEnabled");
 	Table[0].EntryContext = Value;
-	// Must match the type in the high bits of Flags; RtlQueryRegistryValues compares the two.
 	Table[0].DefaultType = REG_DWORD;
 	Table[0].DefaultData = nullptr;
 	Table[0].DefaultLength = 0;

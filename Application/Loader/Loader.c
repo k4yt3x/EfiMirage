@@ -367,6 +367,11 @@ OpenFileAnywhere(
 	}
 
 	FreePool(Handles);
+
+	// Nothing opened: the caller must not be told the file was found.
+	if (*FileHandle == NULL)
+		return EFI_NOT_FOUND;
+
 	return EFI_SUCCESS;
 }
 

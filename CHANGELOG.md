@@ -14,7 +14,7 @@
   `SystemSecureBootInformation` and the registry, with a consistency verdict.
 - OVMF self-tests for the emulation (`just test-emulation`): boot-services and post-
   `SetVirtualAddressMap` variants, driven by two test applications.
-- The loader writes `\EFI\EfiGuard\loader-ran.txt` on every start, so a boot can be
+- The loader writes `loader-ran.txt` next to itself on every start, so a boot can be
   confirmed without a console.
 - `EfiDSEFix` output now falls back to UTF-8 on a redirected handle instead of writing
   nothing when no console is attached.

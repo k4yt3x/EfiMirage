@@ -51,9 +51,8 @@ typedef struct _FAKE_VARIABLE
 } FAKE_VARIABLE;
 
 //
-// Everything Secure Boot related that Windows or a diagnostic tool may consult.
-// SecureBootEnable is the pre-UEFI-2.3.1 Windows variable; firmware that still has
-// it generally keeps it in sync with SecureBoot, so answer it too.
+// Everything Secure Boot related that Windows or a diagnostic tool may consult under the global
+// variable GUID. SecureBootEnable is deliberately not here; see the note below the table.
 //
 STATIC CONST FAKE_VARIABLE mFakeVariables[] =
 {

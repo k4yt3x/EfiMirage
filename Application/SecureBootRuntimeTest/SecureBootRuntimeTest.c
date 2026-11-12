@@ -31,8 +31,6 @@
 
 STATIC UINTN mPassed = 0;
 STATIC UINTN mFailed = 0;
-STATIC UINTN mTableBefore = 0;
-STATIC UINTN mGetVariableBefore = 0;
 
 //
 // ConOut does not survive ExitBootServices() reliably (its device stack is boot services
@@ -79,22 +77,6 @@ SerialWriteNumber(
 			CpuPause();
 		IoWrite8(COM1, (UINT8)Character);
 	}
-}
-
-STATIC
-VOID
-SerialWriteHex(
-	IN UINTN Value
-	)
-{
-	CHAR8 Digits[17];
-	for (UINTN i = 0; i < 16; ++i)
-	{
-		Digits[i] = "0123456789ABCDEF"[(Value >> ((15 - i) * 4)) & 0xF];
-	}
-	Digits[16] = '\0';
-	SerialWrite("0x");
-	SerialWrite(Digits);
 }
 
 STATIC
@@ -239,8 +221,12 @@ UnmapIdentityRange(
 	for (UINT64 Address = PhysicalStart & ~(PAGE_SIZE_4K - 1); Address < End; Address += PAGE_SIZE_4K)
 	{
 		UINT64* PdptEntry = &Pdpt[(Address >> 30) & 0x1FF];
-		if (!IsPresent(*PdptEntry) || (*PdptEntry & (1ULL << 7)) != 0)
+		if (!IsPresent(*PdptEntry))
 			continue;
+		// A 1 GiB page is not split here; report that the identity alias survives rather than
+		// letting the caller believe the conversion check is exhaustive.
+		if ((*PdptEntry & (1ULL << 7)) != 0)
+			return FALSE;
 
 		UINT64* Pd = (UINT64*)(UINTN)(*PdptEntry & ~0xFFFULL);
 		UINT64* PdEntry = &Pd[(Address >> 21) & 0x1FF];
@@ -348,7 +334,8 @@ EFI_STATUS
 EnterVirtualMode(
 	OUT EFI_MEMORY_DESCRIPTOR** VirtualMap,
 	OUT UINTN* VirtualMapSize,
-	OUT UINTN* VirtualMapDescriptorSize
+	OUT UINTN* VirtualMapDescriptorSize,
+	OUT BOOLEAN* IdentityRemovedOut
 	)
 {
 	UINTN MemoryMapSize = 0;
@@ -409,14 +396,18 @@ EnterVirtualMode(
 		return Status;
 
 	// Drop the identity alias for runtime code so a pointer that was never converted faults
-	// instead of silently still working.
+	// instead of silently still working. If any range cannot be unmapped the conversion check
+	// below is weaker, so the caller is told rather than left believing it was thorough.
+	BOOLEAN IdentityRemoved = TRUE;
 	for (UINTN i = 0; i < EntryCount; ++i)
 	{
 		EFI_MEMORY_DESCRIPTOR* Entry = (EFI_MEMORY_DESCRIPTOR*)((UINT8*)MemoryMap + i * DescriptorSize);
-		if (Entry->Type == EfiRuntimeServicesCode)
-			UnmapIdentityRange(Entry->PhysicalStart, Entry->NumberOfPages * PAGE_SIZE_4K);
+		if (Entry->Type == EfiRuntimeServicesCode &&
+			!UnmapIdentityRange(Entry->PhysicalStart, Entry->NumberOfPages * PAGE_SIZE_4K))
+			IdentityRemoved = FALSE;
 	}
 	AsmWriteCr3(AsmReadCr3());
+	*IdentityRemovedOut = IdentityRemoved;
 
 	*VirtualMap = MemoryMap;
 	*VirtualMapSize = MemoryMapSize;
@@ -464,37 +455,27 @@ UefiMain(
 	Status = Protocol->Configure(&ConfigData);
 	Check(!EFI_ERROR(Status), L"emulation configured before leaving boot services");
 
-	mTableBefore = (UINTN)gRT;
-	mGetVariableBefore = (UINTN)gRT->GetVariable;
 	EFI_MEMORY_DESCRIPTOR* VirtualMap = NULL;
 	UINTN VirtualMapSize = 0;
 	UINTN VirtualMapDescriptorSize = 0;
-	Status = EnterVirtualMode(&VirtualMap, &VirtualMapSize, &VirtualMapDescriptorSize);
+	BOOLEAN IdentityRemoved = FALSE;
+	Status = EnterVirtualMode(&VirtualMap, &VirtualMapSize, &VirtualMapDescriptorSize, &IdentityRemoved);
 	Check(!EFI_ERROR(Status), L"ExitBootServices and SetVirtualAddressMap succeeded");
 	if (EFI_ERROR(Status))
 	{
+		// Check() has already counted the failure
 		SerialWrite("RESULT: ");
 		SerialWriteNumber(mPassed);
 		SerialWrite(" passed, ");
-		SerialWriteNumber(++mFailed);
+		SerialWriteNumber(mFailed);
 		SerialWrite(" failed\r\n");
 		gRT->ResetSystem(EfiResetShutdown, EFI_SUCCESS, 0, NULL);
 	}
+	Check(IdentityRemoved, L"identity alias for runtime code removed");
 
 	// DxeCore installs a new runtime services table on SetVirtualAddressMap; pick it up or
 	// every call below would go to the stale physical table and bypass the hook.
 	gRT = gST->RuntimeServices;
-
-	SerialWrite("table before EBS was 0x");
-	SerialWriteHex(mTableBefore);
-	SerialWrite(", GetVariable was 0x");
-	SerialWriteHex(mGetVariableBefore);
-	SerialWrite("\r\n");
-	SerialWrite("table now 0x");
-	SerialWriteHex((UINTN)gRT);
-	SerialWrite(", GetVariable now 0x");
-	SerialWriteHex((UINTN)gRT->GetVariable);
-	SerialWrite("\r\n");
 
 	// Everything below runs at runtime: the original GetVariable pointer has been converted
 	// and the firmware image must still be reachable.

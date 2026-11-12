@@ -232,8 +232,8 @@ extern KERNEL_PATCH_INFORMATION gKernelPatchInfo;
 //
 
 //
-// gRT->GetVariable hook. Answers SecureBoot, SetupMode and SecureBootEnable when
-// gDriverConfig.FakeSecureBoot is set and forwards everything else.
+// gRT->GetVariable hook. Answers SecureBoot and SetupMode when gDriverConfig.FakeSecureBoot
+// is set and forwards everything else.
 //
 EFI_STATUS
 EFIAPI
