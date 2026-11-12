@@ -163,27 +163,31 @@ GCC reports loader LTO type-mismatch warnings for `BmRepairAllControllers`,
 pinned EDK2 declarations. These remain in the logs; build success is not runtime
 validation, and this build baseline does not alter those upstream functions.
 
-The loader writes `\EFI\EfiGuard\loader-ran.txt` to the boot volume on every start, so a
-headless boot can be told apart from "the firmware never loaded us". See
+The loader writes `loader-ran.txt` next to itself on every start, so a headless boot can be
+told apart from "the firmware never loaded us". See
 `docs/secureboot.md` for the OVMF boot-entry caveat.
 
 ### Runtime testing
 
-The prior Windows smoke test (2026-11-06, Windows 11 Pro build 26300.9711 with
-Secure Boot enabled) recorded successful help/information commands and expected
-failure statuses without a loaded driver. It did not test authenticated
-requests, loaded-driver operation, or boot compatibility. The EFI images have
-not been boot-tested on this fork yet. Cryptographic authorization and Secure
-Boot reporting remain planned features.
+The Windows smoke test (2026-11-06, Windows 11 Pro build 26300.9711 with Secure
+Boot enabled) records successful help/information commands and expected failure
+statuses without a loaded driver. With the driver loaded, the Secure Boot
+emulation was verified on 2026-11-12 on Windows 11 with Secure Boot disabled in
+the firmware: `EfiDSEFix -s` reported every source as enabled,
+`Confirm-SecureBootUEFI` returned True and the `UEFISecureBootEnabled` registry
+value flipped from 0 to 1, over repeated boots. Cryptographic authorization
+remains a planned feature.
 
-For a manual console smoke test on Windows **without the driver loaded**, copy
-`scripts/test/windev-smoke.ps1` and the console executable to that host, then run:
+For a manual console smoke test on Windows, copy `scripts/test/windev-smoke.ps1` and the
+console executable to that host, then run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\windev-smoke.ps1 -Path .\EfiDSEFix.exe
 ```
 
-This test includes state-changing commands that are expected to fail because
-the driver is absent; it is not a general loaded-driver diagnostic. It skips
+The script probes `-c` first and expects the backdoor-dependent commands to succeed when a
+working driver is loaded and to fail with `STATUS_INVALID_PARAMETER` when it is not, so the
+same run is meaningful in both states. It includes state-changing commands (`-d` disables
+DSE) and is not a general loaded-driver diagnostic. It skips
 native-subsystem images. No remote access credentials or host-specific paths are
 required by the script.

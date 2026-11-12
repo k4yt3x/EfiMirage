@@ -37,3 +37,7 @@ Misc/
 
 # Local test tooling (QEMU/OVMF extracted from packages)
 /.tooling/
+
+# Local review reports; not part of the source tree
+/AUDIT*.md
+/audit*.md

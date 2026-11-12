@@ -10,6 +10,7 @@ firmware is only used by scripts/test/test-secureboot.sh.
 Idempotent: already downloaded packages are not fetched again. Re-run after a
 QEMU version bump by deleting .tooling/.
 """
+import hashlib
 import os
 import subprocess
 import sys
@@ -26,11 +27,15 @@ PKGS = os.path.join(TOOLING, "pkgs")
 PREFIX = os.path.join(TOOLING, "root")
 
 
-def fetch(url, path):
-    if os.path.exists(path):
-        return
-    subprocess.run(["curl", "-fsSL", "--retry", "3", "-o", path + ".part", url], check=True)
-    os.replace(path + ".part", path)
+def fetch(url, path, sha256=""):
+    if not os.path.exists(path):
+        subprocess.run(["curl", "-fsSL", "--retry", "3", "-o", path + ".part", url], check=True)
+        os.replace(path + ".part", path)
+    if sha256:
+        digest = hashlib.sha256(open(path, "rb").read()).hexdigest()
+        if digest != sha256:
+            os.unlink(path)
+            sys.exit(f"checksum mismatch for {os.path.basename(path)}: {digest} != {sha256}")
 
 
 def load_index():
@@ -51,6 +56,7 @@ def load_index():
                     index[fields["NAME"][0]] = {
                         "repo": repo,
                         "filename": fields["FILENAME"][0],
+                        "sha256": fields.get("SHA256SUM", [""])[0],
                         "depends": fields.get("DEPENDS", []),
                         "provides": {p.split("=")[0] for p in fields.get("PROVIDES", [])},
                     }
@@ -70,7 +76,9 @@ def main():
     while queue:
         dep = queue.pop()
         base = dep.split("=")[0].split(">")[0].split("<")[0]
-        if base in resolved or base in installed:
+        # Always resolve the targets themselves: their files are what gets extracted, even on a
+        # host that already has the packages installed.
+        if base in resolved or (base in installed and base not in TARGETS):
             continue
         name = base if base in index else providers.get(base)
         if name is None:
@@ -84,7 +92,7 @@ def main():
         record = resolved[name]
         print(f"fetch {name}")
         fetch(f"{MIRROR}/{record['repo']}/os/{ARCH}/{record['filename']}",
-              os.path.join(PKGS, record["filename"]))
+              os.path.join(PKGS, record["filename"]), record["sha256"])
 
     os.makedirs(PREFIX, exist_ok=True)
     for record in resolved.values():

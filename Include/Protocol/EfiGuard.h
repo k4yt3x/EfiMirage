@@ -99,6 +99,14 @@ typedef struct _EFIGUARD_BACKDOOR_DATA {
 //
 typedef struct _EFIGUARD_CONFIGURATION_DATA {
 	//
+	// Must be EFIGUARD_CONFIGURATION_DATA_VERSION.
+	//
+	// First on purpose: a caller built against an older, shorter struct reads its own bytes
+	// here rather than reading past its buffer, and a zero-initialized struct is refused.
+	//
+	UINT32 Version;
+
+	//
 	// Type of Driver Signature Enforcement bypass to use.
 	// Default: DSE_DISABLE_SETVARIABLE_HOOK
 	//
@@ -121,11 +129,6 @@ typedef struct _EFIGUARD_CONFIGURATION_DATA {
 	BOOLEAN FakeSecureBoot;
 
 	UINT8 Reserved[2];
-
-	//
-	// Must be EFIGUARD_CONFIGURATION_DATA_VERSION.
-	//
-	UINT32 Version;
 } EFIGUARD_CONFIGURATION_DATA;
 
 

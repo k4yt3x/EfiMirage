@@ -5,7 +5,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 require_tools just python3
 cd "$ROOT"
 just --fmt --check
-for script in "$ROOT"/scripts/*.sh; do sh -n "$script"; done
+for script in "$ROOT"/scripts/*.sh "$ROOT"/scripts/test/*.sh; do sh -n "$script"; done
 
 mkdir -p "$ROOT/.scratch"
 scratch=$(mktemp -d "$ROOT/.scratch/check.XXXXXX")

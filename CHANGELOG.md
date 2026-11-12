@@ -25,6 +25,29 @@
 
 ### Fixed
 
+- The `SetVariable` backdoor is unhooked at `ExitBootServices()` whenever it is not the selected bypass for a
+  boot that reached `bootmgfw.efi`, independently of Secure Boot emulation, and it refuses requests in that
+  state instead of relying on the hook having been removed.
+- `Loader.efi` configuration parsing: inline `#` comments, `true`/`false`/`yes`/`no` values, invalid values
+  (reported and skipped instead of silently turning the setting off), UTF-8 BOM and non-ASCII bytes (no longer
+  truncate the file), whole-token key matching, and a `%%u` that printed literally.
+- `GetVariable` now follows the UEFI contract for a NULL buffer that is large enough (`EFI_INVALID_PARAMETER`,
+  size untouched), matching EDK2's variable service.
+- `SecureBootEnable` is no longer answered under the global variable GUID, where standard firmware does not
+  define it.
+- `EfiDSEFix -s` reports a missing `UEFISecureBootEnabled` as an error instead of `4294967295`, and only
+  counts an explicit 1 as enabled.
+- The boot marker is written next to the loader instead of a fixed `\EFI\EfiGuard` path, so it also works in
+  the documented `\EFI\Boot\bootx64.efi` layout.
+- The runtime self-test now uses a non-identity virtual mapping and removes the identity alias for runtime
+  code, so a missing pointer conversion faults instead of passing silently; a run that never reaches an
+  assertion no longer counts as a pass.
+- `SecureBoot.c` added to the Visual Studio project; `Version` moved to the start of
+  `EFIGUARD_CONFIGURATION_DATA`, and the DSE bypass range check compares unsigned so negative enum values are
+  rejected under MSVC.
+- `test-secureboot.sh` accepts the `noopt` profile, kills QEMU on interruption, and lints under `just check`;
+  `fetch-ovmf.py` always extracts its targets and verifies package checksums.
+
 - The runtime table hooks were torn down at `ExitBootServices()` whenever `bootmgfw.efi` had
   not been seen, even when Secure Boot emulation still needed them.
 - Add `SafeIntLib` mapping to `EfiGuardPkg.dsc` for building `Loader.efi` against `edk2-stable202608`.

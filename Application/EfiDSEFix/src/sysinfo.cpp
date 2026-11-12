@@ -205,19 +205,27 @@ ReadSecureBootRegistryState(
 {
 	*Value = ULONG_MAX;
 
+	// REQUIRED: a missing value must be an error, not silently fall back to a default that the
+	// verdict would then read as "enabled". RTL_QUERY_REGISTRY_TYPECHECK is deliberately not used:
+	// with DIRECT it rejects even a matching REG_DWORD on current Windows.
 	RTL_QUERY_REGISTRY_TABLE Table[2] = {};
-	Table[0].Flags = RTL_QUERY_REGISTRY_DIRECT;
+	Table[0].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_REQUIRED;
 	Table[0].Name = const_cast<PWSTR>(L"UEFISecureBootEnabled");
 	Table[0].EntryContext = Value;
+	// Must match the type in the high bits of Flags; RtlQueryRegistryValues compares the two.
 	Table[0].DefaultType = REG_DWORD;
-	Table[0].DefaultData = Value;
-	Table[0].DefaultLength = sizeof(*Value);
+	Table[0].DefaultData = nullptr;
+	Table[0].DefaultLength = 0;
 
-	return RtlQueryRegistryValues(RTL_REGISTRY_ABSOLUTE,
-								L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\SecureBoot\\State",
-								Table,
-								nullptr,
-								nullptr);
+	CONST NTSTATUS Status = RtlQueryRegistryValues(RTL_REGISTRY_ABSOLUTE,
+												L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\SecureBoot\\State",
+												Table,
+												nullptr,
+												nullptr);
+	if (NT_SUCCESS(Status) && *Value == ULONG_MAX)
+		return STATUS_OBJECT_NAME_NOT_FOUND;
+
+	return Status;
 }
 
 //
@@ -271,7 +279,7 @@ ReportSecureBootState(
 	const bool ReportedlyEnabled = NT_SUCCESS(SecureBootStatus) && SecureBootValue != 0 &&
 		NT_SUCCESS(SetupModeStatus) && SetupModeValue == 0 &&
 		NT_SUCCESS(SysInfoStatus) && SecureBootInfo.SecureBootEnabled != 0 &&
-		NT_SUCCESS(RegistryStatus) && RegistryValue != 0;
+		NT_SUCCESS(RegistryStatus) && RegistryValue == 1;
 
 	Printf(L"\n  Verdict: %ls\n", ReportedlyEnabled
 		? L"Secure Boot appears ENABLED from all sources."

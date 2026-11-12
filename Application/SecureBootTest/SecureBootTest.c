@@ -100,11 +100,11 @@ ConfigureDriver(
 	)
 {
 	EFIGUARD_CONFIGURATION_DATA ConfigData = {
+		Version,
 		BypassMethod,
 		FALSE,
 		FakeSecureBoot,
-		{ 0, 0 },
-		Version
+		{ 0, 0 }
 	};
 	*Status = Protocol->Configure(&ConfigData);
 }
@@ -205,6 +205,13 @@ UefiMain(
 	Size = sizeof(BigBuffer);
 	Status = ReadFakeVariable(EFI_SECURE_BOOT_MODE_NAME, NULL, &Size, BigBuffer);
 	Check(!EFI_ERROR(Status) && Size == sizeof(UINT8) && BigBuffer[0] == 1, L"oversized buffer is clamped to one byte");
+
+	// A buffer that is large enough but has no pointer behind it is a caller error and must be
+	// reported without touching the size, as EDK2's variable service does
+	Size = sizeof(BigBuffer);
+	Status = ReadFakeVariable(EFI_SECURE_BOOT_MODE_NAME, NULL, &Size, NULL);
+	Check(Status == EFI_INVALID_PARAMETER && Size == sizeof(BigBuffer),
+		L"NULL buffer with enough room returns EFI_INVALID_PARAMETER and keeps the size");
 
 	// A NULL size pointer is a caller error
 	Status = ReadFakeVariable(EFI_SECURE_BOOT_MODE_NAME, NULL, NULL, &Value);

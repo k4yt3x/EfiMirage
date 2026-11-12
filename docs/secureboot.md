@@ -17,12 +17,15 @@ GUID:
 |---|---|---|
 | `SecureBoot` | `1` | `BS+RT` |
 | `SetupMode` | `0` | `BS+RT` |
-| `SecureBootEnable` | `1` | `BS+RT` |
 
-Everything else is forwarded unchanged. The hook is installed when the driver loads and
-is a pass-through until configuration enables it, because `winload.efi` reads `SecureBoot`
-before `ExitBootServices()` to choose its image validation path; faking it only at runtime
-would be too late.
+Everything else is forwarded unchanged. `SecureBootEnable` is deliberately not answered: the
+firmware keeps it under its own vendor GUID (`gEfiSecureBootEnableDisableGuid`), Windows does
+not read it, and inventing it under the global GUID would make `GetVariable` answer for a
+variable `GetNextVariableName` never lists.
+
+The hook is installed and active as soon as the driver loads, because `winload.efi` reads
+`SecureBoot` before `ExitBootServices()` to choose its image validation path; faking it only
+at runtime would be too late.
 
 `SetupMode` is faked in the same direction as `SecureBoot` on purpose. Reporting
 `SecureBoot=1` while leaving the real `SetupMode=1` describes a state no firmware
@@ -70,8 +73,8 @@ the feature can be turned back off.
   missing or foreign `db` does not stop the boot because `ImgpValidateImageHash` is already
   patched out, but a tool that parses the signature databases sees the truth.
 - **HVCI.** Unrelated; HVCI still wins on `g_CiOptions` writes as before.
-- **`GetNextVariableName`.** Not hooked. Every UEFI 2.3.1+ firmware defines these variables,
-  so enumeration lists them anyway.
+- **`GetNextVariableName`.** Not hooked. Every UEFI 2.3.1+ firmware defines the two variables
+  answered here, so enumeration lists them anyway.
 
 ## Verifying
 
@@ -124,7 +127,7 @@ bcdedit /set {bootmgr} path \EFI\EfiGuard\Loader.efi
 ```
 
 To confirm the firmware really took the entry, the loader writes
-`\EFI\EfiGuard\loader-ran.txt` on every start; delete it before the reboot and check
+`loader-ran.txt` next to `Loader.efi` on every start; delete it before the reboot and check
 whether it comes back. Revert with
 `bcdedit /set {bootmgr} path \EFI\Microsoft\Boot\bootmgfw.efi`.
 

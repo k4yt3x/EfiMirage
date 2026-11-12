@@ -58,9 +58,15 @@ typedef struct _FAKE_VARIABLE
 STATIC CONST FAKE_VARIABLE mFakeVariables[] =
 {
 	{ EFI_SECURE_BOOT_MODE_NAME, SECURE_BOOT_MODE_ENABLE },
-	{ EFI_SETUP_MODE_NAME,		 USER_MODE },
-	{ L"SecureBootEnable",		 SECURE_BOOT_MODE_ENABLE }
+	{ EFI_SETUP_MODE_NAME,		 USER_MODE }
 };
+
+//
+// SecureBootEnable is not one of the global variables: firmware that still has it keeps it under
+// its own vendor GUID (SecurityPkg's gEfiSecureBootEnableDisableGuid), and Windows does not read it.
+// It is therefore deliberately not answered here rather than invented under the wrong GUID, which
+// would make GetVariable and GetNextVariableName disagree.
+//
 
 //
 // Returns the value to report for VariableName, or NULL if this is not a variable we answer.
@@ -86,9 +92,9 @@ LookupFakeVariable(
 }
 
 //
-// Answers one GetVariable() call for a fake variable, following the semantics in the UEFI specification:
-// a size query reports the required size and EFI_BUFFER_TOO_SMALL, a short buffer reports the required
-// size and EFI_BUFFER_TOO_SMALL, and a sufficient buffer gets the value and EFI_SUCCESS.
+// Same contract as EDK2's VariableServiceGetVariable: a buffer that is large enough but has no
+// pointer behind it is a caller error and leaves *DataSize and *Attributes alone, a buffer that is
+// too small reports the required size, and only a successful read copies the value.
 //
 STATIC
 EFI_STATUS
@@ -101,21 +107,31 @@ ReadFakeVariable(
 	)
 {
 	CONST UINTN RequiredSize = sizeof(FakeVariable->Value);
+	EFI_STATUS Status;
 
 	if (DataSize == NULL)
 		return EFI_INVALID_PARAMETER;
 
 	CONST UINTN BufferSize = *DataSize;
-	*DataSize = RequiredSize;
+	if (BufferSize >= RequiredSize)
+	{
+		if (Data == NULL)
+			return EFI_INVALID_PARAMETER;
+
+		*(UINT8*)Data = FakeVariable->Value;
+		*DataSize = RequiredSize;
+		Status = EFI_SUCCESS;
+	}
+	else
+	{
+		*DataSize = RequiredSize;
+		Status = EFI_BUFFER_TOO_SMALL;
+	}
 
 	if (Attributes != NULL)
 		*Attributes = EFIGUARD_SECURE_BOOT_VARIABLE_ATTRIBUTES;
 
-	if (Data == NULL || BufferSize < RequiredSize)
-		return EFI_BUFFER_TOO_SMALL;
-
-	*(UINT8*)Data = FakeVariable->Value;
-	return EFI_SUCCESS;
+	return Status;
 }
 
 //

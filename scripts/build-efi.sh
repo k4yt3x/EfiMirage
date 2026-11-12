@@ -28,7 +28,8 @@ export PATH="$EDK_TOOLS_PATH/BinWrappers/PosixLike:$EDK_TOOLS_PATH/Bin/Linux-x86
 # A previous component output must not masquerade as the result of this build.
 rm -f "$EFI_OUT/EfiGuardDxe.efi" "$EFI_OUT/Loader.efi" \
     "$EFI_OUT/EfiGuardDxe.debug" "$EFI_OUT/Loader.debug" \
-    "$EFI_OUT/EfiGuardDxe.map" "$EFI_OUT/Loader.map"
+    "$EFI_OUT/EfiGuardDxe.map" "$EFI_OUT/Loader.map" \
+    "$EFI_OUT/test/SecureBootTest.efi" "$EFI_OUT/test/SecureBootRuntimeTest.efi"
 "$PYTHON_COMMAND" "$EDK_TOOLS_PATH/Source/Python/build/build.py" \
     -a X64 -t GCC -b "$TARGET" -p EfiGuardPkg/EfiGuardPkg.dsc
 

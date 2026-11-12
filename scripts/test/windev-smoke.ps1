@@ -62,6 +62,17 @@ $expected = [ordered]@{
     '-s' = 0x00000000
 }
 
+# The backdoor-dependent commands succeed when a working driver is loaded and fail without one.
+# Probe once with -c so the same script is meaningful in both states.
+$probe = Start-Process -FilePath $Path -ArgumentList '-c' -Wait -PassThru -NoNewWindow
+$driverLoaded = (($probe.ExitCode -band 0xFFFFFFFF) -eq 0)
+Write-Host ("driver loaded: {0}" -f $driverLoaded)
+if ($driverLoaded) {
+    $expected['-c'] = 0x00000000
+    $expected['-r'] = 0x00000000
+    $expected['-d'] = 0x00000000
+}
+
 $failed = 0
 foreach ($a in $expected.Keys) {
     $got = $null
@@ -87,9 +98,9 @@ foreach ($a in $expected.Keys) {
 
     $want = $expected[$a]
     $got32 = $got -band 0xFFFFFFFF
-    # -s is a report, not an action: 1 means "not consistently enabled", which is a
-    # legitimate result on firmware without Secure Boot rather than a failure.
-    $ok = ($got32 -eq $want) -or ($a -eq '-s' -and $got32 -in 0, 1)
+    # -s is a report, not an action: STATUS_UNSUCCESSFUL means "not consistently enabled",
+    # which is a legitimate result on firmware without Secure Boot rather than a failure.
+    $ok = ($got32 -eq $want) -or ($a -eq '-s' -and $got32 -in 0, 0xC0000001)
     if (-not $ok) { $failed++ }
     '{0,-5} want 0x{1:X8} got 0x{2:X8}  {3}' -f "[$a]", $want, $got32, $(if ($ok) {'ok'} else {'MISMATCH'})
 }

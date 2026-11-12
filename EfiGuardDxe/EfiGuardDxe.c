@@ -42,11 +42,11 @@ EFIGUARD_DRIVER_PROTOCOL gEfiGuardDriverProtocol =
 // Default driver configuration used if Configure() is not called
 //
 EFIGUARD_CONFIGURATION_DATA gDriverConfig = {
-	DSE_DISABLE_SETVARIABLE_HOOK,	// DseBypassMethod
-	FALSE,							// WaitForKeyPress
-	TRUE,							// FakeSecureBoot
-	{ 0, 0 },						// Reserved
-	EFIGUARD_CONFIGURATION_DATA_VERSION
+	EFIGUARD_CONFIGURATION_DATA_VERSION,	// Version
+	DSE_DISABLE_SETVARIABLE_HOOK,			// DseBypassMethod
+	FALSE,									// WaitForKeyPress
+	TRUE,									// FakeSecureBoot
+	{ 0, 0 }								// Reserved
 };
 
 //
@@ -245,13 +245,15 @@ HookedSetVariable(
 	IN VOID *Data
 	)
 {
-	// We should not be hooking the runtime table after ExitBootServices() unless this is the selected DSE bypass method
-	// or Secure Boot emulation needs the hook to survive.
-	ASSERT(!gEfiAtRuntime || gDriverConfig.FakeSecureBoot ||
+	// The hook is removed at ExitBootServices() unless the backdoor is the selected mode and a Windows boot
+	// actually happened.
+	ASSERT(!gEfiAtRuntime ||
 		(gDriverConfig.DseBypassMethod == DSE_DISABLE_SETVARIABLE_HOOK && gBootmgfwHandle != NULL));
 
-	// Do we have a match for the variable name and vendor GUID?
+	// Do we have a match for the variable name and vendor GUID? The backdoor is only meaningful for the
+	// SetVariable bypass on a boot that actually reached bootmgfw.efi; anything else is a plain SetVariable.
 	if (gEfiAtRuntime && gEfiGoneVirtual &&
+		gDriverConfig.DseBypassMethod == DSE_DISABLE_SETVARIABLE_HOOK && gBootmgfwHandle != NULL &&
 		VariableName != NULL && VariableName[0] != CHAR_NULL && VendorGuid != NULL &&
 		CompareGuid(VendorGuid, EFIGUARD_BACKDOOR_VARIABLE_GUID) &&
 		StrnCmp(VariableName, EFIGUARD_BACKDOOR_VARIABLE_NAME, (sizeof(EFIGUARD_BACKDOOR_VARIABLE_NAME) / sizeof(CHAR16)) - 1) == 0)
@@ -399,11 +401,17 @@ ExitBootServicesEvent(
 			gST->ConOut->ClearScreen(gST->ConOut);
 	}
 
-	// Keep the runtime table hooks only if something still needs them: Secure Boot emulation for any OS, or
-	// the SetVariable backdoor for a Windows boot that actually happened. When nothing is needed, perform the
-	// cleanup now so the image may be freed after this callback returns; otherwise the driver must stay linked
-	// as /SUBSYSTEM:EFI_RUNTIME_DRIVER and mapped.
+	// The backdoor is only useful for a Windows boot that actually happened with the SetVariable bypass
+	// selected. Unhook it independently of Secure Boot emulation, which may still need the table hooks.
 	CONST BOOLEAN KeepSetVariableHook = gDriverConfig.DseBypassMethod == DSE_DISABLE_SETVARIABLE_HOOK && gBootmgfwHandle != NULL;
+	if (!KeepSetVariableHook && mOriginalSetVariable != NULL)
+	{
+		SetServicePointer(&gRT->Hdr, (VOID**)&gRT->SetVariable, (VOID*)mOriginalSetVariable);
+		mOriginalSetVariable = NULL;
+	}
+
+	// Tear down everything else only when no runtime hook is left to serve. Otherwise the driver must stay
+	// linked as /SUBSYSTEM:EFI_RUNTIME_DRIVER and its image mapped for the lifetime of the call.
 	if (!KeepSetVariableHook && !gDriverConfig.FakeSecureBoot)
 	{
 		// Uninstall our installed driver protocols
@@ -419,13 +427,6 @@ ExitBootServicesEvent(
 		{
 			gBS->CloseEvent(gEfiVirtualNotifyEvent);
 			gEfiVirtualNotifyEvent = NULL;
-		}
-
-		// Unhook gRT->SetVariable
-		if (mOriginalSetVariable != NULL)
-		{
-			SetServicePointer(&gRT->Hdr, (VOID**)&gRT->SetVariable, (VOID*)mOriginalSetVariable);
-			mOriginalSetVariable = NULL;
 		}
 
 		// Unhook gRT->GetVariable
@@ -452,9 +453,15 @@ SetVirtualAddressMapEvent(
 	ASSERT(gBS == NULL);
 	gEfiVirtualNotifyEvent = NULL;
 
-	// Convert the original SetVariable pointer to virtual so our hook will continue to work
-	EFI_STATUS Status = gRT->ConvertPointer(0, (VOID**)&mOriginalSetVariable);
-	ASSERT_EFI_ERROR(Status);
+	// Convert the original SetVariable pointer to virtual so our hook will continue to work.
+	// It is only installed when the backdoor is in use; Secure Boot emulation may keep the
+	// notification alive without it.
+	EFI_STATUS Status = EFI_SUCCESS;
+	if (mOriginalSetVariable != NULL)
+	{
+		Status = gRT->ConvertPointer(0, (VOID**)&mOriginalSetVariable);
+		ASSERT_EFI_ERROR(Status);
+	}
 
 	// Same for the original GetVariable pointer if the Secure Boot emulation hook is still installed
 	SecureBootConvertRuntimePointers();
@@ -488,8 +495,9 @@ DriverConfigure(
 	}
 
 	// Validate before committing anything: an out-of-range method would silently fall through to
-	// DSE_DISABLE_NONE in the patch stages.
-	if (ConfigurationData->DseBypassMethod > DSE_DISABLE_SETVARIABLE_HOOK)
+	// DSE_DISABLE_NONE in the patch stages. Compare unsigned so a negative enum value (whose
+	// underlying type is signed under MSVC) is rejected rather than passing the range check.
+	if ((UINT32)ConfigurationData->DseBypassMethod > (UINT32)DSE_DISABLE_SETVARIABLE_HOOK)
 		return EFI_INVALID_PARAMETER;
 
 	gDriverConfig = *ConfigurationData;
@@ -646,8 +654,9 @@ EfiGuardInitialize(
 	Print(L"Hooked gRT->SetVariable: 0x%p -> 0x%p\r\n", (VOID*)mOriginalSetVariable, (VOID*)&HookedSetVariable);
 
 	//
-	// Hook gRT->GetVariable for Secure Boot emulation. Installed unconditionally; the hook is a
-	// pass-through until Configure() turns gDriverConfig.FakeSecureBoot on.
+	// Hook gRT->GetVariable for Secure Boot emulation. Installed unconditionally; it is active from
+	// the start because the default configuration enables it, and stays a pass-through only while a
+	// configuration leaves gDriverConfig.FakeSecureBoot off.
 	//
 	Status = InstallSecureBootHook();
 	if (EFI_ERROR(Status))

@@ -47,6 +47,9 @@
     <ClCompile Include="PatchNtoskrnl.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SecureBoot.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="VisualUefi.c">
       <Filter>Source Files</Filter>
     </ClCompile>

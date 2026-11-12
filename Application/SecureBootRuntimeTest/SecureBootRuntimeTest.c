@@ -7,14 +7,16 @@
   conversion in the SetVirtualAddressMap notification and GetVariable calls into the
   converted firmware pointer.
 
-  Boot services are gone from the midpoint on, so this test reports through ConOut and
-  reboots the machine when it is done.
+  Boot services are gone from the midpoint on and ConOut does not survive that, so the test
+  reports straight to COM1 and shuts the machine down when it is done.
 **/
 
 #include <Uefi.h>
 
 #include <Guid/GlobalVariable.h>
 #include <Guid/ImageAuthentication.h>
+#include <Library/BaseLib.h>
+#include <Library/BaseMemoryLib.h>
 #include <Library/DevicePathLib.h>
 #include <Library/CpuLib.h>
 #include <Library/IoLib.h>
@@ -149,12 +151,204 @@ LoadDriver(
 }
 
 //
-// Leaves boot services and installs an identity virtual mapping, like a boot loader would.
+// Runtime regions are mapped at a fixed non-zero offset by duplicating the low PML4 entry into
+// a higher-half slot. With an identity mapping ConvertPointer() is a no-op and a forgotten
+// conversion in the driver would go unnoticed; with this offset a stale physical pointer to
+// runtime code stops working once the identity alias for that code is removed below.
+//
+#define VIRTUAL_OFFSET		(0xFFFF800000000000ULL)
+#define VIRTUAL_PML4_INDEX	256
+#define PAGE_SIZE_4K		0x1000ULL
+#define PAGE_SIZE_2M		0x200000ULL
+#define CR0_WP				0x00010000ULL
+
+STATIC UINT8* mPagePool = NULL;
+STATIC UINTN mPagePoolUsed = 0;
+STATIC UINTN mPagePoolPages = 0;
+
+STATIC
+VOID*
+EFIAPI
+PoolPage(
+	VOID
+	)
+{
+	if (mPagePoolUsed >= mPagePoolPages)
+		return NULL;
+	VOID* Page = mPagePool + mPagePoolUsed * PAGE_SIZE_4K;
+	++mPagePoolUsed;
+	SetMem(Page, PAGE_SIZE_4K, 0);
+	return Page;
+}
+
+//
+// The firmware maps its page tables read-only, so writes to them need CR0.WP cleared.
+//
+STATIC
+UINTN
+EFIAPI
+BeginPageTableWrite(
+	VOID
+	)
+{
+	CONST UINTN Cr0 = AsmReadCr0();
+	if ((Cr0 & CR0_WP) != 0)
+		AsmWriteCr0(Cr0 & ~CR0_WP);
+	return Cr0;
+}
+
+STATIC
+VOID
+EFIAPI
+EndPageTableWrite(
+	IN UINTN Cr0
+	)
+{
+	AsmWriteCr0(Cr0);
+}
+
+STATIC
+BOOLEAN
+EFIAPI
+IsPresent(
+	IN UINT64 Entry
+	)
+{
+	return (Entry & 1) != 0;
+}
+
+//
+// Removes the low (identity) mapping for [PhysicalStart, PhysicalStart + Size), splitting 2 MiB
+// pages into 4 KiB pages as needed out of a pool allocated before ExitBootServices().
+//
+STATIC
+BOOLEAN
+EFIAPI
+UnmapIdentityRange(
+	IN UINT64 PhysicalStart,
+	IN UINT64 Size
+	)
+{
+	UINT64* Pml4 = (UINT64*)(UINTN)(AsmReadCr3() & ~0xFFFULL);
+	if (!IsPresent(Pml4[0]))
+		return FALSE;
+
+	UINT64* Pdpt = (UINT64*)(UINTN)(Pml4[0] & ~0xFFFULL);
+	UINT64 End = PhysicalStart + Size;
+	CONST UINTN SavedCr0 = BeginPageTableWrite();
+	for (UINT64 Address = PhysicalStart & ~(PAGE_SIZE_4K - 1); Address < End; Address += PAGE_SIZE_4K)
+	{
+		UINT64* PdptEntry = &Pdpt[(Address >> 30) & 0x1FF];
+		if (!IsPresent(*PdptEntry) || (*PdptEntry & (1ULL << 7)) != 0)
+			continue;
+
+		UINT64* Pd = (UINT64*)(UINTN)(*PdptEntry & ~0xFFFULL);
+		UINT64* PdEntry = &Pd[(Address >> 21) & 0x1FF];
+		if (!IsPresent(*PdEntry))
+			continue;
+
+		if ((*PdEntry & (1ULL << 7)) != 0)
+		{
+			UINT64* PageTable = PoolPage();
+			if (PageTable == NULL)
+				return FALSE;
+			CONST UINT64 Base = *PdEntry & ~(PAGE_SIZE_2M - 1);
+			CONST UINT64 Flags = *PdEntry & 0xFFF;
+			for (UINTN i = 0; i < 512; ++i)
+				PageTable[i] = (Base + i * PAGE_SIZE_4K) | Flags;
+			*PdEntry = (UINT64)(UINTN)PageTable | 0x3;
+		}
+
+		UINT64* PageTable = (UINT64*)(UINTN)(*PdEntry & ~0xFFFULL);
+		PageTable[(Address >> 12) & 0x1FF] = 0;
+	}
+
+	EndPageTableWrite(SavedCr0);
+	return TRUE;
+}
+
+//
+// Builds an independent page table tree under PML4[VIRTUAL_PML4_INDEX] that maps the runtime
+// ranges at PhysicalStart + VIRTUAL_OFFSET. Only those ranges are mapped; anything else under the
+// high half stays not present.
+//
+STATIC
+BOOLEAN
+EFIAPI
+BuildHighHalfMapping(
+	IN EFI_MEMORY_DESCRIPTOR* MemoryMap,
+	IN UINTN EntryCount,
+	IN UINTN DescriptorSize
+	)
+{
+	UINT64* Pml4 = (UINT64*)(UINTN)(AsmReadCr3() & ~0xFFFULL);
+	CONST UINTN SavedCr0 = BeginPageTableWrite();
+
+	UINT64* Pdpt = PoolPage();
+	if (Pdpt == NULL)
+	{
+		EndPageTableWrite(SavedCr0);
+		return FALSE;
+	}
+	Pml4[VIRTUAL_PML4_INDEX] = (UINT64)(UINTN)Pdpt | 0x3;
+
+	BOOLEAN Result = TRUE;
+	for (UINTN i = 0; i < EntryCount && Result; ++i)
+	{
+		EFI_MEMORY_DESCRIPTOR* Entry = (EFI_MEMORY_DESCRIPTOR*)((UINT8*)MemoryMap + i * DescriptorSize);
+		if (Entry->Type != EfiRuntimeServicesCode && Entry->Type != EfiRuntimeServicesData)
+			continue;
+
+		UINT64 End = Entry->PhysicalStart + Entry->NumberOfPages * PAGE_SIZE_4K;
+		for (UINT64 Address = Entry->PhysicalStart & ~(PAGE_SIZE_4K - 1); Address < End; Address += PAGE_SIZE_4K)
+		{
+			CONST UINT64 Virtual = Address + VIRTUAL_OFFSET;
+			CONST UINTN PdptIndex = (UINTN)((Virtual >> 30) & 0x1FF);
+			CONST UINTN PdIndex = (UINTN)((Virtual >> 21) & 0x1FF);
+			CONST UINTN PtIndex = (UINTN)((Virtual >> 12) & 0x1FF);
+
+			if (!IsPresent(Pdpt[PdptIndex]))
+			{
+				UINT64* NewPd = PoolPage();
+				if (NewPd == NULL)
+				{
+					Result = FALSE;
+					break;
+				}
+				Pdpt[PdptIndex] = (UINT64)(UINTN)NewPd | 0x3;
+			}
+			UINT64* Pd = (UINT64*)(UINTN)(Pdpt[PdptIndex] & ~0xFFFULL);
+
+			if (!IsPresent(Pd[PdIndex]))
+			{
+				UINT64* NewPt = PoolPage();
+				if (NewPt == NULL)
+				{
+					Result = FALSE;
+					break;
+				}
+				Pd[PdIndex] = (UINT64)(UINTN)NewPt | 0x3;
+			}
+			UINT64* Pt = (UINT64*)(UINTN)(Pd[PdIndex] & ~0xFFFULL);
+
+			Pt[PtIndex] = Address | 0x3;
+		}
+	}
+
+	EndPageTableWrite(SavedCr0);
+	AsmWriteCr3(AsmReadCr3());
+	return Result;
+}
+
+//
+// Leaves boot services and switches to a virtual map where runtime regions live at VIRTUAL_OFFSET.
 //
 STATIC
 EFI_STATUS
 EnterVirtualMode(
-	VOID
+	OUT EFI_MEMORY_DESCRIPTOR** VirtualMap,
+	OUT UINTN* VirtualMapSize,
+	OUT UINTN* VirtualMapDescriptorSize
 	)
 {
 	UINTN MemoryMapSize = 0;
@@ -167,10 +361,24 @@ EnterVirtualMode(
 		return Status;
 
 	// Leave room for the entries ExitBootServices() itself may add
-	MemoryMapSize += 4 * DescriptorSize;
+	MemoryMapSize += 8 * DescriptorSize;
 	EFI_MEMORY_DESCRIPTOR* MemoryMap = AllocatePool(MemoryMapSize);
 	if (MemoryMap == NULL)
 		return EFI_OUT_OF_RESOURCES;
+
+	// Page tables for splitting 2 MiB pages must come from boot services
+	mPagePoolPages = 32;
+	mPagePool = AllocatePages(mPagePoolPages);
+	if (mPagePool == NULL)
+		return EFI_OUT_OF_RESOURCES;
+
+	// Five level paging would need a different slot; skip the aliasing rather than guess
+	if ((AsmReadCr4() & (1ULL << 12)) != 0)
+		return EFI_UNSUPPORTED;
+
+	UINT64* Pml4 = (UINT64*)(UINTN)(AsmReadCr3() & ~0xFFFULL);
+	if (IsPresent(Pml4[VIRTUAL_PML4_INDEX]))
+		return EFI_ALREADY_STARTED;
 
 	Status = gBS->GetMemoryMap(&MemoryMapSize, MemoryMap, &MapKey, &DescriptorSize, &DescriptorVersion);
 	if (EFI_ERROR(Status))
@@ -180,15 +388,40 @@ EnterVirtualMode(
 	if (EFI_ERROR(Status))
 		return Status;
 
-	// Identity map: keep every host address where the firmware already has it
+	// Runtime code and data move to the alias; everything else, including this application,
+	// stays where it is.
 	UINTN EntryCount = MemoryMapSize / DescriptorSize;
 	for (UINTN i = 0; i < EntryCount; ++i)
 	{
 		EFI_MEMORY_DESCRIPTOR* Entry = (EFI_MEMORY_DESCRIPTOR*)((UINT8*)MemoryMap + i * DescriptorSize);
-		Entry->VirtualStart = Entry->PhysicalStart;
+		Entry->VirtualStart = (Entry->Type == EfiRuntimeServicesCode || Entry->Type == EfiRuntimeServicesData)
+			? Entry->PhysicalStart + VIRTUAL_OFFSET
+			: Entry->PhysicalStart;
 	}
 
-	return gRT->SetVirtualAddressMap(MemoryMapSize, DescriptorSize, DescriptorVersion, MemoryMap);
+	// Give the high half its own page table tree before anything is unmapped from the low one,
+	// otherwise clearing an identity entry would clear the aliased entry with it.
+	if (!BuildHighHalfMapping(MemoryMap, EntryCount, DescriptorSize))
+		return EFI_OUT_OF_RESOURCES;
+
+	Status = gRT->SetVirtualAddressMap(MemoryMapSize, DescriptorSize, DescriptorVersion, MemoryMap);
+	if (EFI_ERROR(Status))
+		return Status;
+
+	// Drop the identity alias for runtime code so a pointer that was never converted faults
+	// instead of silently still working.
+	for (UINTN i = 0; i < EntryCount; ++i)
+	{
+		EFI_MEMORY_DESCRIPTOR* Entry = (EFI_MEMORY_DESCRIPTOR*)((UINT8*)MemoryMap + i * DescriptorSize);
+		if (Entry->Type == EfiRuntimeServicesCode)
+			UnmapIdentityRange(Entry->PhysicalStart, Entry->NumberOfPages * PAGE_SIZE_4K);
+	}
+	AsmWriteCr3(AsmReadCr3());
+
+	*VirtualMap = MemoryMap;
+	*VirtualMapSize = MemoryMapSize;
+	*VirtualMapDescriptorSize = DescriptorSize;
+	return EFI_SUCCESS;
 }
 
 EFI_STATUS
@@ -204,13 +437,13 @@ UefiMain(
 	EFIGUARD_DRIVER_PROTOCOL* Protocol = NULL;
 	if (!EFI_ERROR(Status))
 		Status = gBS->LocateProtocol(&gEfiGuardDriverProtocolGuid, NULL, (VOID**)&Protocol);
-	SerialWrite("driver ready\r\n");
+	Check(Protocol != NULL, L"driver loaded and protocol located");
 	if (Protocol == NULL)
 	{
 		SerialWrite("RESULT: ");
 		SerialWriteNumber(mPassed);
 		SerialWrite(" passed, ");
-		SerialWriteNumber(++mFailed);
+		SerialWriteNumber(mFailed);
 		SerialWrite(" failed\r\n");
 		gBS->Exit(ImageHandle, EFI_ABORTED, 0, NULL);
 	}
@@ -222,18 +455,21 @@ UefiMain(
 	Check(!EFI_ERROR(Status) && DefaultValue == 1, L"emulation is on by default, before any configuration");
 
 	EFIGUARD_CONFIGURATION_DATA ConfigData = {
+		EFIGUARD_CONFIGURATION_DATA_VERSION,
 		DSE_DISABLE_NONE,
 		FALSE,
 		TRUE,
-		{ 0, 0 },
-		EFIGUARD_CONFIGURATION_DATA_VERSION
+		{ 0, 0 }
 	};
 	Status = Protocol->Configure(&ConfigData);
 	Check(!EFI_ERROR(Status), L"emulation configured before leaving boot services");
 
 	mTableBefore = (UINTN)gRT;
 	mGetVariableBefore = (UINTN)gRT->GetVariable;
-	Status = EnterVirtualMode();
+	EFI_MEMORY_DESCRIPTOR* VirtualMap = NULL;
+	UINTN VirtualMapSize = 0;
+	UINTN VirtualMapDescriptorSize = 0;
+	Status = EnterVirtualMode(&VirtualMap, &VirtualMapSize, &VirtualMapDescriptorSize);
 	Check(!EFI_ERROR(Status), L"ExitBootServices and SetVirtualAddressMap succeeded");
 	if (EFI_ERROR(Status))
 	{

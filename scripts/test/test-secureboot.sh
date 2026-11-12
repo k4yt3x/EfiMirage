@@ -21,7 +21,7 @@ PROFILE=release
 for arg in "$@"; do
 	case "$arg" in
 	boot|runtime) VARIANT=$arg ;;
-	release|debug) PROFILE=$arg ;;
+	release|debug|noopt) PROFILE=$arg ;;
 	*) printf 'error: unknown argument %s\n' "$arg" >&2; exit 2 ;;
 	esac
 done
@@ -43,7 +43,17 @@ VARS_TEMPLATE="$TOOLING/root/usr/share/edk2/x64/OVMF_VARS.4m.fd"
 
 mkdir -p "$ROOT/.scratch"
 SCRATCH=$(mktemp -d "$ROOT/.scratch/secureboot.XXXXXX")
-trap 'rm -rf -- "$SCRATCH"' 0
+QEMU_PID=
+stop_qemu() {
+	if [ -n "$QEMU_PID" ]; then
+		kill "$QEMU_PID" 2>/dev/null || true
+		wait "$QEMU_PID" 2>/dev/null || true
+		QEMU_PID=
+	fi
+}
+trap 'stop_qemu; rm -rf -- "$SCRATCH"' 0
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 mkdir -p "$SCRATCH/esp/EFI/BOOT"
 cp "$EFI_DIR/test/$APP.efi" "$SCRATCH/esp/EFI/BOOT/BOOTX64.EFI"
@@ -67,8 +77,7 @@ for _ in $(seq 1 240); do
 	sleep 0.5
 done
 sleep 1
-kill "$QEMU_PID" 2>/dev/null || true
-wait "$QEMU_PID" 2>/dev/null || true
+stop_qemu
 
 if [ ! -s "$LOG" ]; then
 	printf 'error: the firmware produced no serial output\n' >&2
@@ -83,6 +92,13 @@ grep -E '^\[(PASS|FAIL)\]|^RESULT:|^Firmware before' "$LOG" || true
 
 if ! grep -q 'RESULT:' "$LOG"; then
 	printf 'FAIL: the self-test did not complete\n' >&2
+	printf '%s\n' '--- serial log ---' >&2
+	cat "$LOG" >&2
+	exit 1
+fi
+
+# A run that never got as far as its first assertion must not count as a pass.
+if ! grep -qE '^RESULT: [1-9][0-9]* passed, 0 failed' "$LOG"; then
 	printf '%s\n' '--- serial log ---' >&2
 	cat "$LOG" >&2
 	exit 1

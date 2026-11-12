@@ -73,8 +73,10 @@ Loader vs UEFI driver entry comparison
 3. Boot the machine from the drive you used in step 2.
    Most firmwares provide a boot menu to do this via F8/F10/F11/F12. If not, you will need to configure the BIOS to boot from the new drive.
 4. Windows should now boot, and you should see EfiGuard messages during boot.
-   To configure without the `HOME` prompt, place `\EFI\EfiGuard\EfiGuard.cfg` next to the
-   loader (see [docs/secureboot.md](docs/secureboot.md)).
+   To configure without the `HOME` prompt, place `\EFI\EfiGuard\EfiGuard.cfg` on the same
+   volume (see [docs/secureboot.md](docs/secureboot.md)). The loader reads it; a driver that is
+   installed as a firmware driver entry and never goes through the loader uses the compiled-in
+   defaults instead.
 5. If you booted with the `SetVariable` hook (the default), run `EfiDSEFix.exe -d` from an Administrator command prompt after boot to disable DSE, or run `EfiDSEFix.exe` to see the full list of options.
 
 Note that you **don't need to use a separate drive** for the loader. If preferable, you can install EfiGuard on the ESP that Windows is already installed on. However, this is somewhat more complicated as you will need to add a UEFI boot entry for the loader.
@@ -86,8 +88,10 @@ To do this, mount the ESP at `X:` using `mountvol X: /S` and follow the steps ab
 2. Copy `EfiGuardDxe.efi` to `X:/EFI/Boot/EfiGuardDxe.efi`.
 3. Boot to the [UEFI Shell](https://github.com/tianocore/edk2/blob/edk2-stable201903/ShellBinPkg/UefiShell/X64/Shell.efi?raw=true) and add a UEFI driver entry: `bcfg driver add 0 EfiGuardDxe.efi "EfiGuardDxe"`.
 4. Windows should now boot, and you should see EfiGuard messages during boot.
-   To configure without the `HOME` prompt, place `\EFI\EfiGuard\EfiGuard.cfg` next to the
-   loader (see [docs/secureboot.md](docs/secureboot.md)).
+   To configure without the `HOME` prompt, place `\EFI\EfiGuard\EfiGuard.cfg` on the same
+   volume (see [docs/secureboot.md](docs/secureboot.md)). The loader reads it; a driver that is
+   installed as a firmware driver entry and never goes through the loader uses the compiled-in
+   defaults instead.
 5. If you booted with the `SetVariable` hook (the default), run `EfiDSEFix.exe -d` from an Administrator command prompt after boot to disable DSE, or run `EfiDSEFix.exe` to see the full list of options.
 
 **Note**: depending on your firmware, you may need to use "add**p**" in step 3 instead of "add". VirtualBox is known to require this, and possibly some motherboard firmwares do too.
