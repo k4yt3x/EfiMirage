@@ -3,6 +3,10 @@
 #include <ntstatus.h>
 #include <Guid/GlobalVariable.h>
 
+#ifndef KEY_QUERY_VALUE
+#define KEY_QUERY_VALUE 0x0001
+#endif
+
 extern EFI_GUID gEfiGlobalVariableGuid;
 
 static constexpr PCWCHAR CodeIntegrityOptionNames[] =
@@ -197,34 +201,54 @@ ReadFirmwareBoolean(
 	return Status;
 }
 
+//
+// Reads UEFISecureBootEnabled directly instead of through RtlQueryRegistryValues: the DIRECT query
+// copies whatever type it finds into the caller's buffer, so a REG_SZ there would be written as a
+// UNICODE_STRING over a ULONG. Opening the key and checking the type is explicit about it.
+//
 static
 NTSTATUS
 ReadSecureBootRegistryState(
 	_Out_ PULONG Value
 	)
 {
-	*Value = ULONG_MAX;
+	*Value = 0;
 
-	// REQUIRED: a missing value must be an error, not silently fall back to a default that the
-	// verdict would then read as "enabled". RTL_QUERY_REGISTRY_TYPECHECK is deliberately not used:
-	// with DIRECT it rejects even a matching REG_DWORD on current Windows.
-	RTL_QUERY_REGISTRY_TABLE Table[2] = {};
-	Table[0].Flags = RTL_QUERY_REGISTRY_DIRECT | RTL_QUERY_REGISTRY_REQUIRED;
-	Table[0].Name = const_cast<PWSTR>(L"UEFISecureBootEnabled");
-	Table[0].EntryContext = Value;
-	Table[0].DefaultType = REG_DWORD;
-	Table[0].DefaultData = nullptr;
-	Table[0].DefaultLength = 0;
+	UNICODE_STRING KeyPath;
+	RtlInitUnicodeString(&KeyPath, L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\SecureBoot\\State");
 
-	CONST NTSTATUS Status = RtlQueryRegistryValues(RTL_REGISTRY_ABSOLUTE,
-												L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\SecureBoot\\State",
-												Table,
-												nullptr,
-												nullptr);
-	if (NT_SUCCESS(Status) && *Value == ULONG_MAX)
-		return STATUS_OBJECT_NAME_NOT_FOUND;
+	OBJECT_ATTRIBUTES Attributes;
+	InitializeObjectAttributes(&Attributes, &KeyPath, OBJ_CASE_INSENSITIVE, nullptr, nullptr);
 
-	return Status;
+	HANDLE Key = nullptr;
+	NTSTATUS Status = NtOpenKey(&Key, KEY_QUERY_VALUE, &Attributes);
+	if (!NT_SUCCESS(Status))
+		return Status;
+
+	UNICODE_STRING ValueName;
+	RtlInitUnicodeString(&ValueName, L"UEFISecureBootEnabled");
+
+	union
+	{
+		KEY_VALUE_PARTIAL_INFORMATION Information;
+		UCHAR Buffer[sizeof(KEY_VALUE_PARTIAL_INFORMATION) + sizeof(ULONG)];
+	} Data = {};
+	ULONG ResultLength = 0;
+	Status = NtQueryValueKey(Key,
+							&ValueName,
+							KeyValuePartialInformation,
+							&Data,
+							sizeof(Data),
+							&ResultLength);
+	NtClose(Key);
+	if (!NT_SUCCESS(Status))
+		return Status;
+
+	if (Data.Information.Type != REG_DWORD || Data.Information.DataLength != sizeof(ULONG))
+		return STATUS_OBJECT_TYPE_MISMATCH;
+
+	RtlCopyMemory(Value, Data.Information.Data, sizeof(ULONG));
+	return STATUS_SUCCESS;
 }
 
 //

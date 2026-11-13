@@ -2,10 +2,11 @@
   Secure Boot emulation runtime test.
 
   Booted by scripts/test/test-secureboot.sh in place of SecureBootTest when the harness is
-  asked for the runtime variant. Uses an identity virtual mapping so it does not need a
-  real loader, but exercises the parts that only break after ExitBootServices(): pointer
-  conversion in the SetVirtualAddressMap notification and GetVariable calls into the
-  converted firmware pointer.
+  asked for the runtime variant. Runtime regions are mapped at a non-zero virtual offset
+  with a page table tree of their own, and the identity alias for runtime code is removed
+  after SetVirtualAddressMap(), so a missing conversion of the saved GetVariable pointer
+  faults instead of quietly working. That exercises the parts which only break after
+  ExitBootServices().
 
   Boot services are gone from the midpoint on and ConOut does not survive that, so the test
   reports straight to COM1 and shuts the machine down when it is done.
@@ -200,8 +201,21 @@ IsPresent(
 }
 
 //
+// Physical address masks for page table entries. Bits 63:52 are NX and available, and must not be
+// treated as part of the address when an entry is dereferenced.
+//
+#define PTE_ADDRESS_4K		0x000FFFFFFFFFF000ULL
+#define PTE_ADDRESS_2M		0x000FFFFFFFE00000ULL
+#define PTE_NX				(1ULL << 63)
+#define PTE_LARGE_PAGE		(1ULL << 7)		// PS in a PD entry, PAT in a PT entry
+#define PTE_PAT_2M			(1ULL << 12)	// PAT in a 2 MiB PD entry
+
+//
 // Removes the low (identity) mapping for [PhysicalStart, PhysicalStart + Size), splitting 2 MiB
 // pages into 4 KiB pages as needed out of a pool allocated before ExitBootServices().
+//
+// Returns FALSE when part of the range could not be unmapped, in which case the caller must not
+// assume the identity alias is gone.
 //
 STATIC
 BOOLEAN
@@ -211,46 +225,61 @@ UnmapIdentityRange(
 	IN UINT64 Size
 	)
 {
-	UINT64* Pml4 = (UINT64*)(UINTN)(AsmReadCr3() & ~0xFFFULL);
+	UINT64* Pml4 = (UINT64*)(UINTN)(AsmReadCr3() & PTE_ADDRESS_4K);
 	if (!IsPresent(Pml4[0]))
 		return FALSE;
 
-	UINT64* Pdpt = (UINT64*)(UINTN)(Pml4[0] & ~0xFFFULL);
+	UINT64* Pdpt = (UINT64*)(UINTN)(Pml4[0] & PTE_ADDRESS_4K);
 	UINT64 End = PhysicalStart + Size;
+	BOOLEAN Result = TRUE;
 	CONST UINTN SavedCr0 = BeginPageTableWrite();
+
 	for (UINT64 Address = PhysicalStart & ~(PAGE_SIZE_4K - 1); Address < End; Address += PAGE_SIZE_4K)
 	{
 		UINT64* PdptEntry = &Pdpt[(Address >> 30) & 0x1FF];
 		if (!IsPresent(*PdptEntry))
 			continue;
+
 		// A 1 GiB page is not split here; report that the identity alias survives rather than
 		// letting the caller believe the conversion check is exhaustive.
-		if ((*PdptEntry & (1ULL << 7)) != 0)
-			return FALSE;
+		if ((*PdptEntry & PTE_LARGE_PAGE) != 0)
+		{
+			Result = FALSE;
+			break;
+		}
 
-		UINT64* Pd = (UINT64*)(UINTN)(*PdptEntry & ~0xFFFULL);
+		UINT64* Pd = (UINT64*)(UINTN)(*PdptEntry & PTE_ADDRESS_4K);
 		UINT64* PdEntry = &Pd[(Address >> 21) & 0x1FF];
 		if (!IsPresent(*PdEntry))
 			continue;
 
-		if ((*PdEntry & (1ULL << 7)) != 0)
+		if ((*PdEntry & PTE_LARGE_PAGE) != 0)
 		{
 			UINT64* PageTable = PoolPage();
 			if (PageTable == NULL)
-				return FALSE;
-			CONST UINT64 Base = *PdEntry & ~(PAGE_SIZE_2M - 1);
-			CONST UINT64 Flags = *PdEntry & 0xFFF;
+			{
+				Result = FALSE;
+				break;
+			}
+
+			// Bit 7 means PS in this entry but PAT in a 4 KiB PTE, so it is dropped; a 2 MiB
+			// entry's PAT bit is bit 12 and maps to bit 7 of each PTE. NX is preserved.
+			CONST UINT64 Base = *PdEntry & PTE_ADDRESS_2M;
+			CONST UINT64 Flags = (*PdEntry & 0xFFF & ~PTE_LARGE_PAGE) |
+				((*PdEntry & PTE_PAT_2M) != 0 ? PTE_LARGE_PAGE : 0) |
+				(*PdEntry & PTE_NX);
 			for (UINTN i = 0; i < 512; ++i)
 				PageTable[i] = (Base + i * PAGE_SIZE_4K) | Flags;
-			*PdEntry = (UINT64)(UINTN)PageTable | 0x3;
+
+			*PdEntry = (UINT64)(UINTN)PageTable | (*PdEntry & (PTE_NX | 0x6)) | 0x3;
 		}
 
-		UINT64* PageTable = (UINT64*)(UINTN)(*PdEntry & ~0xFFFULL);
+		UINT64* PageTable = (UINT64*)(UINTN)(*PdEntry & PTE_ADDRESS_4K);
 		PageTable[(Address >> 12) & 0x1FF] = 0;
 	}
 
 	EndPageTableWrite(SavedCr0);
-	return TRUE;
+	return Result;
 }
 
 //
@@ -267,7 +296,7 @@ BuildHighHalfMapping(
 	IN UINTN DescriptorSize
 	)
 {
-	UINT64* Pml4 = (UINT64*)(UINTN)(AsmReadCr3() & ~0xFFFULL);
+	UINT64* Pml4 = (UINT64*)(UINTN)(AsmReadCr3() & PTE_ADDRESS_4K);
 	CONST UINTN SavedCr0 = BeginPageTableWrite();
 
 	UINT64* Pdpt = PoolPage();
@@ -303,7 +332,7 @@ BuildHighHalfMapping(
 				}
 				Pdpt[PdptIndex] = (UINT64)(UINTN)NewPd | 0x3;
 			}
-			UINT64* Pd = (UINT64*)(UINTN)(Pdpt[PdptIndex] & ~0xFFFULL);
+			UINT64* Pd = (UINT64*)(UINTN)(Pdpt[PdptIndex] & PTE_ADDRESS_4K);
 
 			if (!IsPresent(Pd[PdIndex]))
 			{
@@ -315,7 +344,7 @@ BuildHighHalfMapping(
 				}
 				Pd[PdIndex] = (UINT64)(UINTN)NewPt | 0x3;
 			}
-			UINT64* Pt = (UINT64*)(UINTN)(Pd[PdIndex] & ~0xFFFULL);
+			UINT64* Pt = (UINT64*)(UINTN)(Pd[PdIndex] & PTE_ADDRESS_4K);
 
 			Pt[PtIndex] = Address | 0x3;
 		}

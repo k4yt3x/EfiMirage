@@ -10,7 +10,7 @@ diagnostics check, not a real chain of trust.
 
 ## What is intercepted
 
-`gRT->GetVariable` is hooked and answers three variables under the EFI global variable
+`gRT->GetVariable` is hooked and answers two variables under the EFI global variable
 GUID:
 
 | Variable | Reported value | Reported attributes |
@@ -44,8 +44,8 @@ within 1.5 seconds in the loader and answer No to "Report Secure Boot as enabled
 and software running on it?".
 
 For unattended boots, put `\EFI\EfiGuard\EfiGuard.cfg` on the same volume as the loader.
-If it exists it is applied and the prompts are skipped; if it is absent or unreadable, the
-`HOME` prompt applies.
+It is applied when the loader starts; holding `HOME` still opens the prompts, which begin
+from the values the file set, so a file never makes the prompt unreachable.
 
 ```ini
 # EfiGuard.cfg; UTF-16LE or ASCII, case-insensitive keys, '#' starts a comment

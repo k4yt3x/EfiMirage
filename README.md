@@ -1,8 +1,8 @@
 # EfiGuard — custom fork
 
 This fork adds Secure Boot state emulation on top of upstream: the driver can make
-`SecureBoot`, `SetupMode` and `SecureBootEnable` read as enabled to Windows and the
-software on it. See the [Secure Boot emulation guide](docs/secureboot.md). Cryptographic
+`SecureBoot` read as enabled and `SetupMode` as user mode, to Windows and the software on
+it. See the [Secure Boot emulation guide](docs/secureboot.md). Cryptographic
 authorization of the backdoor is still **not implemented**.
 
 ## Development quick start (Linux)
@@ -31,9 +31,9 @@ If you're just looking to try EfiGuard, skip to [Usage](#usage).
 - Currently supports all EFI-compatible versions of Windows x64 ever released, from Vista SP1 to Windows 11.
 - Easy to use: can be booted from a USB stick or the Windows EFI partition via a loader that automatically finds and boots Windows. The driver can also be loaded and configured manually using either the UEFI shell or the loader.
 - Makes extensive use of the [Zydis](https://github.com/zyantific/zydis) disassembler library for fast runtime instruction decoding to support more robust analysis than what is possible with signature matching, which often requires changes with new OS updates.
-- Works passively: the driver does not load or start the Windows boot manager. Instead it acts on a load of `bootmgfw.efi` by the firmware boot manager via the boot selection menu or an EFI application such as the loader. If a non-Windows OS is booted, the driver will automatically unload itself.
-- Secure Boot state emulation, on by default: makes `SecureBoot`, `SetupMode` and
-  `SecureBootEnable` read as "enabled / user mode" to `winload`, the kernel and user mode,
+- Works passively: the driver does not load or start the Windows boot manager. Instead it acts on a load of `bootmgfw.efi` by the firmware boot manager via the boot selection menu or an EFI application such as the loader. If a non-Windows OS is booted, the driver unhooks its runtime services and its image is released, unless Secure Boot emulation is on (the default), in which case that hook stays for the booted OS too.
+- Secure Boot state emulation, on by default: makes `SecureBoot` read as enabled and
+  `SetupMode` as user mode to `winload`, the kernel and user mode,
   regardless of the firmware state. The firmware's own validation is untouched and TPM measurements still show the
   truth, so BitLocker PCR 7 sealing is unaffected in the other direction. See
   [docs/secureboot.md](docs/secureboot.md).

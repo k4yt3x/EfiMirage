@@ -410,6 +410,10 @@ ExitBootServicesEvent(
 		mOriginalSetVariable = NULL;
 	}
 
+	// Same symmetry for GetVariable: it is only worth keeping while emulation is on.
+	if (!gDriverConfig.FakeSecureBoot)
+		UninstallSecureBootHook();
+
 	// Tear down everything else only when no runtime hook is left to serve. Otherwise the driver must stay
 	// linked as /SUBSYSTEM:EFI_RUNTIME_DRIVER and its image mapped for the lifetime of the call.
 	if (!KeepSetVariableHook && !gDriverConfig.FakeSecureBoot)
@@ -428,9 +432,6 @@ ExitBootServicesEvent(
 			gBS->CloseEvent(gEfiVirtualNotifyEvent);
 			gEfiVirtualNotifyEvent = NULL;
 		}
-
-		// Unhook gRT->GetVariable
-		UninstallSecureBootHook();
 	}
 
 	// Regardless of which OS is being booted, boot services won't be available after this callback returns

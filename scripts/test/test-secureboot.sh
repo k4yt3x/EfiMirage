@@ -11,7 +11,7 @@
 #
 # The firmware comes from a locally extracted edk2-ovmf package (see docs/secureboot.md).
 #
-# Usage: scripts/test/test-secureboot.sh [boot|runtime] [release|debug]
+# Usage: scripts/test/test-secureboot.sh [boot|runtime] [release|debug|noopt]
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 TOOLING="$ROOT/.tooling"

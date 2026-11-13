@@ -443,11 +443,20 @@ TrimConfigToken(
 }
 
 //
+// What one configuration line turned out to be.
+//
+typedef enum _CONFIG_LINE_KIND
+{
+	ConfigLineBlank,		// Empty, whitespace or comment only
+	ConfigLineSetting,		// Key = value
+	ConfigLineMalformed		// Something else, e.g. a missing '='
+} CONFIG_LINE_KIND;
+
+//
 // Splits one line into a key and a value, dropping a '#' comment anywhere on the line.
-// Returns FALSE for blank and comment-only lines.
 //
 STATIC
-BOOLEAN
+CONFIG_LINE_KIND
 EFIAPI
 SplitConfigLine(
 	IN OUT CHAR16* Line,
@@ -461,11 +470,11 @@ SplitConfigLine(
 
 	TrimConfigToken(&Line);
 	if (*Line == L'\0')
-		return FALSE;
+		return ConfigLineBlank;
 
 	CHAR16* Separator = StrStr(Line, L"=");
 	if (Separator == NULL)
-		return FALSE;
+		return ConfigLineMalformed;
 
 	*Separator = L'\0';
 	*Key = Line;
@@ -473,7 +482,7 @@ SplitConfigLine(
 	TrimConfigToken(Key);
 	TrimConfigToken(Value);
 
-	return TRUE;
+	return ConfigLineSetting;
 }
 
 //
@@ -508,8 +517,13 @@ TouchMarkerFile(
 	if (FilePath == NULL)
 		return;
 
+	// Keep the directory part without its trailing separator: the suffix supplies one. For a loader
+	// in the volume root this leaves an empty prefix, so the path stays "\loader-ran.txt" rather
+	// than "\\loader-ran.txt", which EDK2's FAT driver resolves to the root directory itself.
 	UINTN DirectoryLength = StrLen(FilePath);
 	while (DirectoryLength > 0 && FilePath[DirectoryLength - 1] != L'\\')
+		--DirectoryLength;
+	while (DirectoryLength > 0 && FilePath[DirectoryLength - 1] == L'\\')
 		--DirectoryLength;
 
 	CHAR16* MarkerPath = AllocatePool((DirectoryLength + ARRAY_SIZE(MarkerSuffix)) * sizeof(CHAR16));
@@ -628,7 +642,10 @@ LoadConfigurationFile(
 
 		CHAR16* Key;
 		CHAR16* Value;
-		if (SplitConfigLine(Line, &Key, &Value))
+		CONST CONFIG_LINE_KIND Kind = SplitConfigLine(Line, &Key, &Value);
+		if (Kind == ConfigLineMalformed)
+			Print(L"[LOADER] Configuration line \"%s\" has no '='; ignored.\r\n", Line);
+		else if (Kind == ConfigLineSetting)
 		{
 			BOOLEAN Boolean;
 			if (EqualsIgnoreCase(Key, L"DseBypass"))
@@ -787,7 +804,8 @@ StartEfiGuard(
 	}
 
 	//
-	// Driver configuration: a configuration file wins, otherwise ask if the user held HOME.
+	// Driver configuration: start from the defaults or the configuration file, then let HOME
+	// override either.
 	//
 	EFIGUARD_CONFIGURATION_DATA ConfigData = {
 		EFIGUARD_CONFIGURATION_DATA_VERSION,
@@ -806,25 +824,25 @@ StartEfiGuard(
 			: (ConfigData.DseBypassMethod == DSE_DISABLE_NONE ? L'3' : L'1');
 		CONST UINT16 BooleanDefault = ConfigData.FakeSecureBoot ? L'2' : L'1';
 
-		Print(L"\nChoose the type of DSE bypass (current: %u):\r\n"
+		Print(L"\nChoose the type of DSE bypass (current: [%c]):\r\n"
 			L"    [1] Runtime SetVariable hook\r\n    [2] Boot time DSE bypass\r\n    [3] No DSE bypass\r\n    ",
-			(UINTN)ConfigData.DseBypassMethod);
+			DseDefault);
 		CONST UINT16 AcceptedDseBypasses[] = { L'1', L'2', L'3' };
 		CONST UINT16 SelectedDseBypass = PromptInput(AcceptedDseBypasses,
 													sizeof(AcceptedDseBypasses) / sizeof(UINT16),
 													DseDefault);
 
-		Print(L"Wait for a keypress to continue after each patch stage (current: %u)?\n"
+		Print(L"Wait for a keypress to continue after each patch stage (current: %s)?\n"
 			L"    [1] No\r\n    [2] Yes (for debugging)\r\n    ",
-			(UINTN)ConfigData.WaitForKeyPress);
+			ConfigData.WaitForKeyPress ? L"Yes" : L"No");
 		CONST UINT16 NoYes[] = { L'1', L'2' };
 		CONST UINT16 SelectedWaitForKeyPress = PromptInput(NoYes,
 														sizeof(NoYes) / sizeof(UINT16),
 														ConfigData.WaitForKeyPress ? L'2' : L'1');
 
-		Print(L"Report Secure Boot as enabled to Windows and software running on it (current: %u)?\n"
+		Print(L"Report Secure Boot as enabled to Windows and software running on it (current: %s)?\n"
 			L"    [1] No\r\n    [2] Yes\r\n    ",
-			(UINTN)ConfigData.FakeSecureBoot);
+			ConfigData.FakeSecureBoot ? L"Yes" : L"No");
 		CONST UINT16 SelectedFakeSecureBoot = PromptInput(NoYes,
 														sizeof(NoYes) / sizeof(UINT16),
 														BooleanDefault);

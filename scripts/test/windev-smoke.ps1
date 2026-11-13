@@ -1,9 +1,9 @@
 # Smoke test for a cross-compiled EfiDSEFix.exe on the Windows host.
 #
 # Verifies that the MinGW link produced a binary that actually loads and runs,
-# and that command dispatch and NTSTATUS propagation work. It does NOT exercise
-# the driver: with no EfiGuard loaded, every backdoor command must fail with
-# STATUS_INVALID_PARAMETER (0xC000000D).
+# and that command dispatch and NTSTATUS propagation work. It probes -c first: with
+# no EfiGuard loaded every backdoor command must fail with STATUS_INVALID_PARAMETER
+# (0xC000000D), and with a working driver they must succeed.
 #
 # ONLY VALID FOR THE CONSOLE BUILD (EfiDSEFix.exe). The native-subsystem build
 # (EfiDSEFix-native.exe, SUBSYSTEM_NATIVE / 0x1) is rejected by the Win32
@@ -57,15 +57,22 @@ $expected = [ordered]@{
     '-c' = 0xC000000D
     '-r' = 0xC000000D
     '-d' = 0xC000000D
-    # Reads firmware variables and the registry only; 0 when every source agrees. A
-    # machine with Secure Boot genuinely off reports 1, so both are accepted.
+    # Reads firmware variables and the registry only: 0 when every source agrees,
+    # STATUS_UNSUCCESSFUL (0xC0000001) when they do not, which is legitimate on a
+    # machine without EfiGuard.
     '-s' = 0x00000000
 }
 
 # The backdoor-dependent commands succeed when a working driver is loaded and fail without one.
-# Probe once with -c so the same script is meaningful in both states.
-$probe = Start-Process -FilePath $Path -ArgumentList '-c' -Wait -PassThru -NoNewWindow
-$driverLoaded = (($probe.ExitCode -band 0xFFFFFFFF) -eq 0)
+# Probe once with -c so the same script is meaningful in both states. A failed launch must not
+# look like a successful probe: $null -band 0xFFFFFFFF is 0, which would read as "loaded".
+$driverLoaded = $false
+try {
+    $probe = Start-Process -FilePath $Path -ArgumentList '-c' -Wait -PassThru -NoNewWindow -ErrorAction Stop
+    $driverLoaded = ($null -ne $probe) -and ((($probe.ExitCode -band 0xFFFFFFFF) -eq 0))
+} catch {
+    Write-Host ("probe failed: {0}" -f $_.Exception.Message)
+}
 Write-Host ("driver loaded: {0}" -f $driverLoaded)
 if ($driverLoaded) {
     $expected['-c'] = 0x00000000
