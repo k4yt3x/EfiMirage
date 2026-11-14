@@ -29,6 +29,32 @@ under `.tooling/`; prepare it once with `python3 scripts/test/fetch-ovmf.py`
 (see `docs/secureboot.md`). `just doctor` checks
 build tools and dependency checkouts, not Windows/firmware runtime compatibility.
 
+## GitHub Actions
+
+The workflows use the same `just` commands as local builds, in an Arch Linux container on
+GitHub-hosted Linux runners. Host packages follow Arch's rolling repositories; EDK2 and the
+source submodules remain pinned by the repository. Each run bootstraps a fresh workspace.
+
+- **CI** (`.github/workflows/ci.yaml`) runs on pushes to any branch, pull requests, and manual
+  dispatch. It checks scripts and pipeline tests, runs the native loader/driver regression
+  tests, builds the release EFI and Windows console images, and verifies the bundle. A newer
+  run on the same ref cancels the previous CI run.
+- **CD** (`.github/workflows/release.yaml`) runs on every pushed tag and builds the release
+  profile from that tag. Manual dispatch on a branch also offers `release`, `debug`, or
+  `noopt`; dispatch on a tag always builds `release`. Checks and native regression tests must
+  pass before the bundle is uploaded.
+
+Download `efiguard-x64-<profile>` from the **CD run's Artifacts** section. Its ZIP contains
+`EfiGuardDxe.efi`, `Loader.efi`, `EfiDSEFix.exe`, and `SHA256SUMS` at the archive root. Retention
+uses the repository's artifact-retention setting. Component build logs are uploaded by both
+workflows, including after build failures, and retained for 14 days when available.
+
+CD produces Actions artifacts only: it does not create a GitHub Release, sign binaries, or
+install them on a machine. Both workflows use read-only repository permissions and do not
+persist checkout credentials. No extra repository secrets are required. OVMF emulation and
+live Windows tests remain separate from these workflows; use `just test-emulation` locally
+for the firmware suites.
+
 ## Workspace layout
 
 ```text

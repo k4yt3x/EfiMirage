@@ -1,0 +1,68 @@
+name: CD
+
+on:
+  push:
+    tags:
+      - "**"
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Build profile (tags always use release)
+        required: true
+        default: release
+        type: choice
+        options:
+          - release
+          - debug
+          - noopt
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: archlinux:base-devel
+    env:
+      BUILD_PROFILE: ${{ startsWith(github.ref, 'refs/tags/') && 'release' || inputs.profile }}
+
+    steps:
+      - name: Install build tools
+        run: |
+          pacman -Syu --noconfirm --needed \
+            ca-certificates git just nasm python python-pip mingw-w64-gcc util-linux
+
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Bootstrap pinned dependencies
+        run: just bootstrap
+
+      - name: Test and build
+        run: just build "$BUILD_PROFILE"
+
+      - name: Verify bundle
+        run: just verify "$BUILD_PROFILE"
+
+      - name: Upload deployment bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: efiguard-x64-${{ env.BUILD_PROFILE }}
+          path: dist/${{ env.BUILD_PROFILE }}/
+          if-no-files-found: error
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: cd-build-logs-${{ env.BUILD_PROFILE }}
+          path: out/logs/*.log
+          if-no-files-found: ignore
+          retention-days: 14

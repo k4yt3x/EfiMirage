@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: archlinux:base-devel
+
+    steps:
+      # Git must be installed before checkout so bootstrap receives a Git working tree.
+      - name: Install build tools
+        run: |
+          pacman -Syu --noconfirm --needed \
+            ca-certificates git just nasm python python-pip mingw-w64-gcc util-linux
+
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Check scripts and build-pipeline tests
+        run: just check
+
+      - name: Bootstrap pinned dependencies
+        run: just bootstrap
+
+      # Build includes the native loader/driver tests and validates the deployment bundle.
+      - name: Test and build
+        run: just build release
+
+      - name: Verify bundle
+        run: just verify release
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ci-build-logs
+          path: out/logs/*.log
+          if-no-files-found: ignore
+          retention-days: 14

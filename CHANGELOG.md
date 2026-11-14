@@ -2,56 +2,34 @@
 
 ## [Unreleased]
 
-Everything below is part of the same unreleased change set relative to the last
-published release.
-
 ### Added
 
-- Secure Boot state emulation, on by default: the driver makes `SecureBoot` read as enabled
-  and `SetupMode` as user mode, so Windows, its loader and the software on it see a secure
-  boot chain even on firmware without one. The firmware's own validation is untouched and
-  TPM measurements still show the truth. See `docs/secureboot.md`.
-- `\EFI\EfiGuard\EfiGuard.cfg` for unattended configuration of the DSE bypass method, the
-  patch-stage keypress prompt and the emulation. Holding `HOME` still opens the prompts and
-  overrides the file.
-- `EfiDSEFix.exe -s/--secureboot` reports the Secure Boot state from the firmware variables,
-  `SystemSecureBootInformation` and the registry, with a consistency verdict.
-- The loader writes `loader-ran.txt` next to itself on every start, so a boot can be confirmed
-  without a console.
-- `EfiDSEFix` output falls back to UTF-8 when its output is redirected instead of writing
-  nothing.
-- Linux cross-compilation workflow via `just` for dependency setup, offline prerequisite
-  checks, component builds, and complete verified bundles (`dist/<profile>/`).
-- MinGW-w64 cross-compilation support and compatibility headers for `EfiDSEFix.exe` (console
-  and optional native-subsystem variants).
-- SHA-256 manifests (`SHA256SUMS`) and PE32+ header/alignment validation for published
-  bundles.
-- Build-pipeline regression tests, a Windows console smoke test, per-component build logs, and
-  OVMF self-tests for the emulation (`just test-emulation`).
+- GitHub Actions CI checks branch pushes and pull requests.
+- Tag builds provide verified x64 artifacts; manual branch builds allow profile selection.
+- Secure Boot state emulation is on by default without changing firmware validation or TPM state.
+- `\EFI\EfiGuard\EfiGuard.cfg` supports unattended configuration; `HOME` overrides its settings.
+- `EfiDSEFix -s/--secureboot` compares Secure Boot state from firmware, Windows, and the registry.
+- The loader writes `loader-ran.txt` beside itself on each start for headless boot verification.
+- Redirected `EfiDSEFix` output falls back to UTF-8 instead of producing no output.
+- A Linux `just` workflow handles dependency setup, checks, builds, and verified deployment bundles.
+- MinGW-w64 builds support both console and optional native-subsystem versions of `EfiDSEFix.exe`.
+- Deployment bundles include SHA-256 manifests and undergo PE32+ header and alignment validation.
+- Build-pipeline regression tests, a Windows smoke test, and component build logs aid verification.
+- `just test-emulation` checks Secure Boot emulation before and after entering runtime services.
 
 ### Fixed
 
-- The runtime memory-access hook is retained only when its DSE bypass mode is selected and
-  Windows is the active boot attempt. A failed or returned Windows boot does not leave it
-  enabled for a fallback OS. Secure Boot emulation is independent and keeps only its own hook
-  when the memory-access hook is not needed.
-- `Loader.efi`'s configuration file accepts inline `#` comments, `true`/`false`/`yes`/`no`,
-  UTF-8 with a BOM and non-ASCII text, matches keys and values as whole tokens, and reports a
-  line it cannot parse instead of silently ignoring or misapplying it. A missing file no
-  longer crashes the loader. Files exceeding 4096 bytes are reported and rejected in full
-  rather than applying a truncated configuration.
-- `GetVariable` follows the UEFI contract for a NULL buffer that is large enough
-  (`EFI_INVALID_PARAMETER` with the size untouched), matching EDK2's variable service.
-- `SecureBootEnable` is no longer answered under the global variable GUID, where standard
-  firmware does not define it.
-- `EfiDSEFix -s` distinguishes a missing or mistyped `UEFISecureBootEnabled` from a value of 1
-  instead of reporting `4294967295` as enabled.
-- The boot marker is written beside the loader, including when firmware supplies its
-  directory and filename separately. Configuration remains at `\EFI\EfiGuard\EfiGuard.cfg`,
-  with the loader's volume preferred over other volumes.
-- The runtime self-test maps runtime regions at a non-zero offset and drops the identity alias
-  for runtime code, so a missing pointer conversion faults instead of passing silently.
-- `Add SafeIntLib mapping to EfiGuardPkg.dsc` for building `Loader.efi` against
-  `edk2-stable202608`.
-- Guard `wcstoul` redeclaration under MinGW and give `NtProcessStartupW` C linkage, so
-  `EfiDSEFix.exe` links and starts with MinGW-w64.
+- Runtime hooks are removed independently when their DSE bypass or emulation mode is not needed.
+- Failed Windows boot attempts no longer leave the memory-access hook enabled for a fallback OS.
+- Configuration parsing handles inline comments, boolean words, BOMs, and whole-token matching.
+- Non-ASCII configuration text no longer truncates the file.
+- Invalid configuration lines are reported; missing files no longer crash the loader.
+- Configuration files over 4096 bytes are rejected in full rather than partially applied.
+- `GetVariable` rejects a NULL buffer with sufficient capacity without changing the reported size.
+- `SecureBootEnable` is no longer reported under the global variable GUID.
+- `EfiDSEFix -s` no longer reports missing or mistyped registry values as Secure Boot enabled.
+- Boot markers stay beside the loader when firmware supplies split directory and filename nodes.
+- Configuration stays at `\EFI\EfiGuard\EfiGuard.cfg`, with the loader's volume searched first.
+- Runtime tests use non-identity mappings so missing pointer conversions fail instead of passing.
+- The loader builds against `edk2-stable202608` with the required safe-integer library mapping.
+- MinGW-w64 builds of `EfiDSEFix` use compatible declarations and entry-point linkage.
