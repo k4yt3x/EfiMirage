@@ -64,9 +64,14 @@ EFI_EVENT gEfiVirtualNotifyEvent = NULL;
 BOOLEAN gEfiGoneVirtual = FALSE;
 
 //
-// Original gBS->LoadImage pointer
+// Original boot-service image entry points
 //
 STATIC EFI_IMAGE_LOAD mOriginalLoadImage = NULL;
+STATIC EFI_IMAGE_START mOriginalStartImage = NULL;
+
+// StartImage scopes may nest. Only the innermost image identifies the current boot attempt.
+STATIC BOOLEAN mWindowsBootActive = FALSE;
+STATIC UINTN mStartImageDepth = 0;
 
 //
 // Original gRT->SetVariable pointer
@@ -233,6 +238,51 @@ HookedLoadImage(
 }
 
 //
+// Loaded Windows images may return without booting, or start a different OS as a child.
+// Inspect the image being started rather than a saved handle, which firmware may reuse.
+//
+EFI_STATUS
+EFIAPI
+HookedStartImage(
+	IN EFI_HANDLE ImageHandle,
+	OUT UINTN* ExitDataSize,
+	OUT CHAR16** ExitData OPTIONAL
+	)
+{
+	CONST BOOLEAN PreviousWindowsBoot = mWindowsBootActive;
+	mWindowsBootActive = FALSE;
+	++mStartImageDepth;
+
+	EFI_LOADED_IMAGE_PROTOCOL* LoadedImage = NULL;
+	if (!EFI_ERROR(gBS->HandleProtocol(ImageHandle,
+									&gEfiLoadedImageProtocolGuid,
+									(VOID**)&LoadedImage)) && LoadedImage != NULL)
+	{
+		// Any image of the Windows boot chain counts, not only bootmgfw.efi: a WIM boot goes
+		// bootmgfw.efi -> bootmgr.efi -> winload.efi, and each of those may or may not be entered
+		// through gBS->StartImage depending on the firmware and the Windows version.
+		CONST INPUT_FILETYPE FileType = GetInputFileType(LoadedImage->ImageBase, LoadedImage->ImageSize);
+		mWindowsBootActive = FileType == BootmgfwEfi || FileType == BootmgrEfi || FileType == WinloadEfi;
+	}
+
+	CONST EFI_STATUS Status = mOriginalStartImage(ImageHandle, ExitDataSize, ExitData);
+	mWindowsBootActive = PreviousWindowsBoot;
+	--mStartImageDepth;
+	return Status;
+}
+
+STATIC
+BOOLEAN
+EFIAPI
+IsSetVariableHookRequired(
+	VOID
+	)
+{
+	return gDriverConfig.DseBypassMethod == DSE_DISABLE_SETVARIABLE_HOOK &&
+		gBootmgfwHandle != NULL && mWindowsBootActive;
+}
+
+//
 // Runtime Services SetVariable hook
 //
 EFI_STATUS
@@ -245,15 +295,10 @@ HookedSetVariable(
 	IN VOID *Data
 	)
 {
-	// The hook is removed at ExitBootServices() unless the backdoor is the selected mode and a Windows boot
-	// actually happened.
-	ASSERT(!gEfiAtRuntime ||
-		(gDriverConfig.DseBypassMethod == DSE_DISABLE_SETVARIABLE_HOOK && gBootmgfwHandle != NULL));
+	// Eligibility is frozen by the active StartImage scope when boot services end.
+	ASSERT(!gEfiAtRuntime || IsSetVariableHookRequired());
 
-	// Do we have a match for the variable name and vendor GUID? The backdoor is only meaningful for the
-	// SetVariable bypass on a boot that actually reached bootmgfw.efi; anything else is a plain SetVariable.
-	if (gEfiAtRuntime && gEfiGoneVirtual &&
-		gDriverConfig.DseBypassMethod == DSE_DISABLE_SETVARIABLE_HOOK && gBootmgfwHandle != NULL &&
+	if (gEfiAtRuntime && gEfiGoneVirtual && IsSetVariableHookRequired() &&
 		VariableName != NULL && VariableName[0] != CHAR_NULL && VendorGuid != NULL &&
 		CompareGuid(VendorGuid, EFIGUARD_BACKDOOR_VARIABLE_GUID) &&
 		StrnCmp(VariableName, EFIGUARD_BACKDOOR_VARIABLE_NAME, (sizeof(EFIGUARD_BACKDOOR_VARIABLE_NAME) / sizeof(CHAR16)) - 1) == 0)
@@ -401,9 +446,8 @@ ExitBootServicesEvent(
 			gST->ConOut->ClearScreen(gST->ConOut);
 	}
 
-	// The backdoor is only useful for a Windows boot that actually happened with the SetVariable bypass
-	// selected. Unhook it independently of Secure Boot emulation, which may still need the table hooks.
-	CONST BOOLEAN KeepSetVariableHook = gDriverConfig.DseBypassMethod == DSE_DISABLE_SETVARIABLE_HOOK && gBootmgfwHandle != NULL;
+	// A loaded but returned Windows image must not keep the hook for a fallback OS.
+	CONST BOOLEAN KeepSetVariableHook = IsSetVariableHookRequired();
 	if (!KeepSetVariableHook && mOriginalSetVariable != NULL)
 	{
 		SetServicePointer(&gRT->Hdr, (VOID**)&gRT->SetVariable, (VOID*)mOriginalSetVariable);
@@ -437,6 +481,7 @@ ExitBootServicesEvent(
 	// Regardless of which OS is being booted, boot services won't be available after this callback returns
 	gBS = NULL;
 	mOriginalLoadImage = NULL;
+	mOriginalStartImage = NULL;
 	gEfiAtRuntime = TRUE;
 }
 
@@ -520,8 +565,8 @@ EfiGuardUnload(
 	IN EFI_HANDLE ImageHandle
 	)
 {
-	// Do not allow unload if we are at runtime, or if the Windows boot manager has been loaded
-	if (gEfiAtRuntime || gBootmgfwHandle != NULL)
+	// Patched images and in-flight StartImage wrappers may still refer to this driver.
+	if (gEfiAtRuntime || gBootmgfwHandle != NULL || mStartImageDepth != 0)
 	{
 		return EFI_ACCESS_DENIED;
 	}
@@ -562,6 +607,12 @@ EfiGuardUnload(
 	{
 		SetServicePointer(&gBS->Hdr, (VOID**)&gBS->LoadImage, (VOID*)mOriginalLoadImage);
 		mOriginalLoadImage = NULL;
+	}
+
+	if (mOriginalStartImage != NULL)
+	{
+		SetServicePointer(&gBS->Hdr, (VOID**)&gBS->StartImage, (VOID*)mOriginalStartImage);
+		mOriginalStartImage = NULL;
 	}
 
 	// Unhook gRT->GetVariable
@@ -647,6 +698,8 @@ EfiGuardInitialize(
 	//
 	mOriginalLoadImage = (EFI_IMAGE_LOAD)SetServicePointer(&gBS->Hdr, (VOID**)&gBS->LoadImage, (VOID*)&HookedLoadImage);
 	Print(L"Hooked gBS->LoadImage: 0x%p -> 0x%p\r\n", (VOID*)mOriginalLoadImage, (VOID*)&HookedLoadImage);
+
+	mOriginalStartImage = (EFI_IMAGE_START)SetServicePointer(&gBS->Hdr, (VOID**)&gBS->StartImage, (VOID*)&HookedStartImage);
 
 	//
 	// Hook gRT->SetVariable

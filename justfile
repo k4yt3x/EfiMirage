@@ -16,6 +16,10 @@ doctor:
 check:
     @scripts/workspace.sh check
 
+# Run native loader and driver lifecycle regression tests (requires dependency headers).
+test-unit:
+    @scripts/workspace.sh test-unit
+
 # Check, build both components, verify, and publish a complete bundle.
 build profile="release":
     @scripts/workspace.sh build "$1"

@@ -21,6 +21,9 @@ not install host packages. Wine and MSVC are not needed for cross-compilation.
 
 `just check` needs only `just`, Python, a POSIX shell, standard utilities, and
 `flock`; it does not need EDK2, MinGW, network access, or the QEMU tooling.
+`just test-unit` also needs GCC and the pinned EDK2/Zydis headers from bootstrap. It compiles
+the loader and driver with native firmware mocks to check configuration boundaries, marker
+paths and boot-attempt lifetimes; it does not boot firmware or execute Windows images.
 `just test-emulation` boots the images in OVMF and needs the private QEMU + OVMF
 under `.tooling/`; prepare it once with `python3 scripts/test/fetch-ovmf.py`
 (see `docs/secureboot.md`). `just doctor` checks
@@ -65,7 +68,8 @@ it. Nothing in the build pipeline connects to or changes a Windows host.
 
 1. Check build prerequisites and pinned dependency revisions.
 2. Run `just check`'s checks: justfile formatting, shell/Python syntax, and
-   synthetic artifact/build-failure regression tests.
+   synthetic artifact/build-failure regression tests, then `just test-unit`'s native loader
+   and driver regression tests. A failing test stops the build before publication.
 3. Build the EFI driver and loader. A nonzero EDK2 exit status stops the pipeline.
 4. Build the Windows console utility. A compiler or linker error stops the pipeline.
 5. Validate all three images: x64 PE32+ headers, expected subsystems, section

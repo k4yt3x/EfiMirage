@@ -12,7 +12,7 @@ case "$action" in
         [ "$#" -le 1 ] || fail "expected at most one profile"
         set_profile "${1:-release}"
         ;;
-    bootstrap|doctor|check|clean)
+    bootstrap|doctor|check|test-unit|clean)
         [ "$#" -eq 0 ] || fail "$action takes no arguments"
         ;;
     *) fail "unknown task '$action'; use just --list" ;;
@@ -48,10 +48,12 @@ case "$action" in
         printf 'Build prerequisites are ready (EDK2 %s).\n' "$EDK2_TAG"
         ;;
     check) "$ROOT/scripts/check.sh" ;;
+    test-unit) "$ROOT/scripts/test/test-unit.sh" ;;
     build)
         require_tools just git make python3 gcc g++ nasm x86_64-w64-mingw32-gcc x86_64-w64-mingw32-g++ x86_64-w64-mingw32-windres
         check_dependencies
         "$ROOT/scripts/check.sh"
+        "$ROOT/scripts/test/test-unit.sh"
         run_logged "efi-$PROFILE" "$ROOT/scripts/build-efi.sh" "$PROFILE"
         run_logged "windows-$PROFILE" "$ROOT/scripts/build-windows.sh" "$PROFILE" console
         python3 "$ROOT/scripts/artifacts.py" stage "$PROFILE"

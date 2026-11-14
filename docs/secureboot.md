@@ -34,7 +34,9 @@ produces, and makes `winload` take the enrollment path against a firmware with n
 Once either this feature or the `SetVariable` backdoor is on, the driver stays linked as a
 runtime driver and its image is kept mapped past `ExitBootServices()`; the original
 `GetVariable` pointer is converted in the `SetVirtualAddressMap()` notification so runtime
-calls still reach the firmware.
+calls still reach the firmware. The memory-access hook is retained only when `DseBypass = hook`
+and Windows is the active boot attempt at `ExitBootServices()`. Returning from a Windows
+boot attempt does not keep that hook enabled for a subsequent non-Windows boot.
 
 ## Turning it on and off
 
@@ -55,8 +57,10 @@ FakeSecureBoot = 0      # omit to keep the default (on)
 ```
 
 Unknown keys and unknown values are reported on screen and ignored, so an old config keeps
-booting. The file must sit at that exact path because the loader looks for it relative to
-each volume.
+booting. The file must sit at that exact path: the loader checks its own volume first, then
+other volumes, not the directory containing the loader. The maximum file size is **4096 bytes**,
+including any encoding BOM. Larger files are reported and ignored in full, leaving the
+existing settings unchanged; shorten the file before retrying.
 
 Programmatically, it is `EFIGUARD_CONFIGURATION_DATA.FakeSecureBoot`, sent through the
 driver protocol `Configure()` together with `Version = EFIGUARD_CONFIGURATION_DATA_VERSION`.

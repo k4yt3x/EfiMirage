@@ -31,23 +31,24 @@ published release.
 
 ### Fixed
 
-- The driver no longer keeps a runtime hook it does not need: `gRT->SetVariable` is restored
-  at `ExitBootServices()` unless the `SetVariable` DSE bypass is selected and a Windows boot
-  actually happened, and `gRT->GetVariable` is restored unless emulation is on. Both used to
-  stay installed whenever emulation was enabled (now the default), leaving the unauthenticated
-  kernel read/write backdoor reachable in modes that ask for no backdoor.
+- The runtime memory-access hook is retained only when its DSE bypass mode is selected and
+  Windows is the active boot attempt. A failed or returned Windows boot does not leave it
+  enabled for a fallback OS. Secure Boot emulation is independent and keeps only its own hook
+  when the memory-access hook is not needed.
 - `Loader.efi`'s configuration file accepts inline `#` comments, `true`/`false`/`yes`/`no`,
   UTF-8 with a BOM and non-ASCII text, matches keys and values as whole tokens, and reports a
   line it cannot parse instead of silently ignoring or misapplying it. A missing file no
-  longer crashes the loader.
+  longer crashes the loader. Files exceeding 4096 bytes are reported and rejected in full
+  rather than applying a truncated configuration.
 - `GetVariable` follows the UEFI contract for a NULL buffer that is large enough
   (`EFI_INVALID_PARAMETER` with the size untouched), matching EDK2's variable service.
 - `SecureBootEnable` is no longer answered under the global variable GUID, where standard
   firmware does not define it.
 - `EfiDSEFix -s` distinguishes a missing or mistyped `UEFISecureBootEnabled` from a value of 1
   instead of reporting `4294967295` as enabled.
-- Configuration and state reporting work in the documented `\EFI\Boot\bootx64.efi` layout:
-  the boot marker and the configuration file are resolved relative to the loader.
+- The boot marker is written beside the loader, including when firmware supplies its
+  directory and filename separately. Configuration remains at `\EFI\EfiGuard\EfiGuard.cfg`,
+  with the loader's volume preferred over other volumes.
 - The runtime self-test maps runtime regions at a non-zero offset and drops the identity alias
   for runtime code, so a missing pointer conversion faults instead of passing silently.
 - `Add SafeIntLib mapping to EfiGuardPkg.dsc` for building `Loader.efi` against

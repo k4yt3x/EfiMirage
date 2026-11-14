@@ -259,8 +259,7 @@ LocateFile(
 }
 
 //
-// Opens a file, preferring the volume this application was loaded from so a configuration file
-// next to the loader wins over a same-named file on another device. Caller closes both handles.
+// Opens a volume-root-relative path on this application's volume. Caller closes both handles.
 //
 STATIC
 EFI_STATUS
@@ -486,6 +485,59 @@ SplitConfigLine(
 }
 
 //
+// File path nodes are opened relative to the previous directory; a leading '\' resets to
+// the volume root. Device-path display text inserts '/' between nodes and is not a filename.
+//
+STATIC
+CHAR16*
+EFIAPI
+GetLoaderFilePath(
+	IN CONST EFI_DEVICE_PATH_PROTOCOL* DevicePath
+	)
+{
+	if (DevicePath == NULL)
+		return NULL;
+
+	UINTN Size = 0;
+	CONST EFI_DEVICE_PATH_PROTOCOL* Node = DevicePath;
+	for (; !IsDevicePathEnd(Node); Node = NextDevicePathNode(Node))
+	{
+		CONST UINTN NodeSize = DevicePathNodeLength(Node);
+		if (DevicePathType(Node) != MEDIA_DEVICE_PATH || DevicePathSubType(Node) != MEDIA_FILEPATH_DP ||
+			NodeSize < SIZE_OF_FILEPATH_DEVICE_PATH + sizeof(CHAR16) ||
+			(NodeSize - SIZE_OF_FILEPATH_DEVICE_PATH) % sizeof(CHAR16) != 0)
+			return NULL;
+
+		CONST UINT8* Bytes = (CONST UINT8*)Node;
+		if (Bytes[NodeSize - 2] != 0 || Bytes[NodeSize - 1] != 0 || Size > MAX_UINTN - NodeSize)
+			return NULL;
+		Size += NodeSize;
+	}
+	if (Size == 0 || DevicePathNodeLength(Node) != END_DEVICE_PATH_LENGTH)
+		return NULL;
+
+	// Each node's header leaves room for a separator, including the initial root separator.
+	CHAR16* FilePath = AllocatePool(Size);
+	if (FilePath == NULL)
+		return NULL;
+	UINTN Length = 1;
+	FilePath[0] = L'\\';
+	for (Node = DevicePath; !IsDevicePathEnd(Node); Node = NextDevicePathNode(Node))
+	{
+		CONST FILEPATH_DEVICE_PATH* FileNode = (CONST FILEPATH_DEVICE_PATH*)Node;
+		CHAR16 First;
+		CopyMem(&First, FileNode->PathName, sizeof(First));
+		if (First == L'\\')
+			Length = 0;
+		else if (Length > 0 && FilePath[Length - 1] != L'\\')
+			FilePath[Length++] = L'\\';
+		CopyMem(FilePath + Length, FileNode->PathName, DevicePathNodeLength(Node) - SIZE_OF_FILEPATH_DEVICE_PATH);
+		Length += StrLen(FilePath + Length);
+	}
+	return FilePath;
+}
+
+//
 // Leaves a small marker next to the loader so a boot can be confirmed without a console.
 // The path is derived from the loader's own file path, so it works in any layout (including the
 // documented \EFI\Boot\bootx64.efi one) and never needs a directory to be created. Failures
@@ -509,11 +561,7 @@ TouchMarkerFile(
 									NULL,
 									EFI_OPEN_PROTOCOL_GET_PROTOCOL)))
 		return;
-	if (LoadedImage->FilePath == NULL)
-		return;
-
-	// FilePath is a device path node, not a string; converting it yields "\EFI\Boot\bootx64.efi".
-	CHAR16* FilePath = ConvertDevicePathToText(LoadedImage->FilePath, TRUE, TRUE);
+	CHAR16* FilePath = GetLoaderFilePath(LoadedImage->FilePath);
 	if (FilePath == NULL)
 		return;
 
@@ -595,12 +643,18 @@ LoadConfigurationFile(
 		return FALSE;
 	}
 
-	UINTN RawSize = EFIGUARD_CONFIG_MAX_BYTES;
+	// One extra byte distinguishes an exact-limit file from a silently truncated prefix.
+	UINTN RawSize = EFIGUARD_CONFIG_MAX_BYTES + 1;
 	CONST EFI_STATUS Status = File->Read(File, &RawSize, Raw);
 	File->Close(File);
 	Volume->Close(Volume);
-	if (EFI_ERROR(Status))
+	if (EFI_ERROR(Status) || RawSize > EFIGUARD_CONFIG_MAX_BYTES)
 	{
+		if (EFI_ERROR(Status))
+			Print(L"[LOADER] Cannot read configuration %s: %r; ignored.\r\n", EFIGUARD_CONFIG_FILENAME, Status);
+		else
+			Print(L"[LOADER] Configuration %s exceeds %u bytes; reduce its size. File ignored.\r\n",
+				EFIGUARD_CONFIG_FILENAME, (UINTN)EFIGUARD_CONFIG_MAX_BYTES);
 		FreePool(Raw);
 		FreePool(Buffer);
 		return FALSE;

@@ -20,6 +20,7 @@ class BuildFailureTests(unittest.TestCase):
         for name in ("workspace.sh", "common.sh", "build-efi.sh"):
             shutil.copy2(SCRIPTS / name, scripts / name)
         self.executable(scripts / "check.sh", "exit 0\n")
+        self.executable(scripts / "test/test-unit.sh", 'exit "${FAKE_UNIT_RC:-0}"\n')
         self.executable(scripts / "build-windows.sh", 'touch "${0%/*}/windows-ran"\nexit 27\n')
         self.bin = self.root / "bin"
         self.bin.mkdir()
@@ -68,6 +69,14 @@ esac
     def build(self):
         return subprocess.run(["sh", str(self.root / "scripts/workspace.sh"), "build", "release"],
                               cwd=self.root, env=self.environment, capture_output=True, text=True)
+
+    def test_failed_unit_tests_stop_before_building_or_publishing(self):
+        self.environment["FAKE_UNIT_RC"] = "19"
+        result = self.build()
+        self.assertEqual(result.returncode, 19, result.stdout + result.stderr)
+        self.assertFalse((self.root / "out/logs").exists())
+        self.assertFalse((self.root / "scripts/windows-ran").exists())
+        self.assertEqual(self.bundle.read_text(), "last successful bundle\n")
 
     def test_failed_efi_build_rejects_cached_images(self):
         result = self.build()
