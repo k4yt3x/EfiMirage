@@ -75,3 +75,42 @@ jobs:
           path: out/logs/*.log
           if-no-files-found: ignore
           retention-days: 14
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Extract changelog notes for this tag
+        run: python3 scripts/release-notes.py -- "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
+
+      - name: Download verified deployment bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: efimirage-x64-release
+          path: dist/release
+
+      - name: Verify and package release assets
+        run: |
+          python3 scripts/artifacts.py verify release
+          python3 -m zipfile --create efimirage-x64.zip dist/release/*
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
+        with:
+          draft: true
+          tag_name: ${{ github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ github.ref_name }}
+          body_path: ${{ runner.temp }}/release-notes.md
+          files: efimirage-x64.zip
+          fail_on_unmatched_files: true

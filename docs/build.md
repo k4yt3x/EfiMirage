@@ -46,21 +46,32 @@ they do not write global Git configuration or disable ownership checks for other
   dispatch. It checks scripts and pipeline tests, runs the native loader/driver regression
   tests, builds the release EFI and Windows console images, and verifies the bundle. A newer
   run on the same ref cancels the previous CI run.
-- **CD** (`.github/workflows/release.yaml`) runs on every pushed tag and builds the release
-  profile from that tag. Manual dispatch on a branch also offers `release`, `debug`, or
-  `noopt`; dispatch on a tag always builds `release`. Checks and native regression tests must
-  pass before the bundle is uploaded.
+- **CD** (`.github/workflows/release.yaml`) runs on every pushed tag, builds the release
+  profile, and creates a **draft GitHub Release** named after the tag once the build passes.
+  Manual dispatch on a branch offers `release`, `debug`, or `noopt` and produces Actions
+  artifacts only. Dispatch on a tag always builds `release` and runs the release job too.
+  Checks and native regression tests must pass before the bundle is uploaded.
 
 Download `efimirage-x64-<profile>` from the **CD run's Artifacts** section. Its ZIP contains
 `EfiMirageDxe.efi`, `Loader.efi`, `EfiDSEFix.exe`, and `SHA256SUMS` at the archive root. Retention
 uses the repository's artifact-retention setting. Component build logs are uploaded by both
 workflows, including after build failures, and retained for 14 days when available.
 
-CD produces Actions artifacts only: it does not create a GitHub Release, sign binaries, or
-install them on a machine. Both workflows use read-only repository permissions and do not
-persist checkout credentials. No extra repository secrets are required. OVMF emulation and
-live Windows tests remain separate from these workflows; use `just test-emulation` locally
-for the firmware suites.
+For tag runs, a separate release job downloads only the deployment artifact, verifies it again,
+then attaches `efimirage-x64.zip` to the draft release. The ZIP contains the same four files at
+its root; build logs are not release assets. Rerunning the workflow updates the release notes
+and replaces the same-named asset.
+
+Release notes come from the section of `CHANGELOG.md` whose version matches the tag exactly:
+`2.0.0` selects `## [2.0.0]`, not `[Unreleased]`, `[2.0.01]`, or `[v2.0.0]`. Missing, empty, or
+duplicate version sections fail the release job before a GitHub Release is created. Preview the
+selection locally with `python3 scripts/release-notes.py -- 2.0.0`.
+
+CI and build jobs use read-only repository permissions. Only the tag-only release job has
+`contents: write`, using the built-in `GITHUB_TOKEN`; no extra repository secrets are required.
+Checkout credentials are not persisted. Neither workflow signs binaries or installs them on a
+machine. OVMF emulation and live Windows tests remain separate from these workflows; use
+`just test-emulation` locally for the firmware suites.
 
 ### Preparing a release
 
@@ -73,10 +84,9 @@ for the firmware suites.
 3. Run `just build release`, `just verify release`, and `just test-emulation release`.
 4. Commit the release changes, then create an annotated tag matching the changelog version
    (for example, `git tag -a 2.0.0 -m "Release 2.0.0"`). Push the commit and that tag to run CD.
-5. After CD succeeds, download its verified bundle. To publish a GitHub Release, create one
-   for the same tag, use that version's changelog section as the notes, and attach the bundle.
-   Name a local archive of the 2.0.0 bundle `efimirage-x64-2.0.0.zip`; this does not rename
-   the profile-based Actions artifact.
+5. After CD succeeds, open the generated draft under **Releases**, review its changelog notes
+   and attached `efimirage-x64.zip`, then publish it. No manual release creation or asset upload
+   is needed.
 
 ## Workspace layout
 

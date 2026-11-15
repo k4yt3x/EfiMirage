@@ -7,7 +7,8 @@
 ### Added
 
 - GitHub Actions CI checks branch pushes and pull requests.
-- Tag builds provide verified x64 artifacts; manual branch builds allow profile selection.
+- Tag pushes create draft GitHub Releases with matching changelog notes and verified x64 bundles.
+- Manual branch builds allow selection of release, debug, or noopt profiles.
 - Secure Boot state emulation is on by default without changing firmware validation or TPM state.
 - `\EFI\EfiMirage\EfiMirage.cfg` supports unattended configuration; `HOME` overrides its settings.
 - `EfiDSEFix -s/--secureboot` compares Secure Boot state from firmware, Windows, and the registry.

@@ -24,4 +24,5 @@ for path in Path(sys.argv[1]).rglob('*.py'):
 PY
 python3 "$ROOT/scripts/test/test-artifacts.py"
 python3 "$ROOT/scripts/test/test-build.py"
+python3 "$ROOT/scripts/test/test-release-notes.py"
 printf 'Workspace checks passed.\n' >&2
