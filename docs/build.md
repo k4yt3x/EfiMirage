@@ -34,6 +34,8 @@ build tools and dependency checkouts, not Windows/firmware runtime compatibility
 The workflows use the same `just` commands as local builds, in an Arch Linux container on
 GitHub-hosted Linux runners. Host packages follow Arch's rolling repositories; EDK2 and the
 source submodules remain pinned by the repository. Each run bootstraps a fresh workspace.
+Container build steps trust only the checkout path through job-local Git environment settings;
+they do not write global Git configuration or disable ownership checks for other repositories.
 
 - **CI** (`.github/workflows/ci.yaml`) runs on pushes to any branch, pull requests, and manual
   dispatch. It checks scripts and pipeline tests, runs the native loader/driver regression

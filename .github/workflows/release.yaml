@@ -42,6 +42,15 @@ jobs:
         with:
           persist-credentials: false
 
+      # Checkout's safe.directory entry lives in a temporary config, not the later shell steps.
+      - name: Trust checkout for container build steps
+        run: |
+          {
+            printf 'GIT_CONFIG_COUNT=1\n'
+            printf 'GIT_CONFIG_KEY_0=safe.directory\n'
+            printf 'GIT_CONFIG_VALUE_0=%s\n' "$GITHUB_WORKSPACE"
+          } >> "$GITHUB_ENV"
+
       - name: Bootstrap pinned dependencies
         run: just bootstrap
 

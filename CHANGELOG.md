@@ -19,6 +19,7 @@
 
 ### Fixed
 
+- Container builds retain Git trust for the checkout after the checkout action finishes.
 - Runtime hooks are removed independently when their DSE bypass or emulation mode is not needed.
 - Failed Windows boot attempts no longer leave the memory-access hook enabled for a fallback OS.
 - Configuration parsing handles inline comments, boolean words, BOMs, and whole-token matching.
