@@ -38,7 +38,7 @@ VARS_TEMPLATE="$TOOLING/root/usr/share/edk2/x64/OVMF_VARS.4m.fd"
 
 [ -x "$QEMU" ] || { printf 'error: QEMU is missing; see docs/secureboot.md for the tooling setup\n' >&2; exit 2; }
 [ -f "$CODE" ] && [ -f "$VARS_TEMPLATE" ] || { printf 'error: OVMF firmware is missing from %s\n' "$TOOLING" >&2; exit 2; }
-[ -f "$EFI_DIR/EfiGuardDxe.efi" ] || { printf 'error: driver is missing; run just efi %s first\n' "$PROFILE" >&2; exit 2; }
+[ -f "$EFI_DIR/EfiMirageDxe.efi" ] || { printf 'error: driver is missing; run just efi %s first\n' "$PROFILE" >&2; exit 2; }
 [ -f "$EFI_DIR/test/$APP.efi" ] || { printf 'error: %s is missing; run just efi %s first\n' "$APP" "$PROFILE" >&2; exit 2; }
 
 mkdir -p "$ROOT/.scratch"
@@ -57,7 +57,7 @@ trap 'exit 143' TERM
 
 mkdir -p "$SCRATCH/esp/EFI/BOOT"
 cp "$EFI_DIR/test/$APP.efi" "$SCRATCH/esp/EFI/BOOT/BOOTX64.EFI"
-cp "$EFI_DIR/EfiGuardDxe.efi" "$SCRATCH/esp/EFI/BOOT/EfiGuardDxe.efi"
+cp "$EFI_DIR/EfiMirageDxe.efi" "$SCRATCH/esp/EFI/BOOT/EfiMirageDxe.efi"
 cp "$VARS_TEMPLATE" "$SCRATCH/OVMF_VARS.fd"
 LOG="$SCRATCH/serial.log"
 

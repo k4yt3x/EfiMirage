@@ -5,7 +5,7 @@ labels: ["bug"]
 body:
   - type: markdown
     attributes:
-      value: Before filing this bug, [please check if it hasn't already been reported](https://github.com/Mattiwatti/EfiGuard/issues?q=is%3Aissue+label%3Abug). If it has, please add useful information to the existing issue instead.
+      value: Before filing this EfiMirage bug, search this repository's issues for an existing report. If it has already been reported, please add useful information there instead. Report fork bugs here, not in the upstream EfiGuard issue tracker.
 
   - type: input
     id: os
@@ -38,7 +38,7 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: If you can provide relevant logs (e.g. of `analyze -v`), please paste them here. The output of `EfiDSEFix -i` is also often helpful when diagnosing EfiGuard issues.
+      description: If you can provide relevant logs (e.g. of `analyze -v`), please paste them here. The output of `EfiDSEFix -i` is also often helpful when diagnosing EfiMirage issues.
       placeholder: Paste logs here
       render: shell
     validations:

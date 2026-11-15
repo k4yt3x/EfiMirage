@@ -21,7 +21,7 @@ prepare_submodule() {
     fi
     git -C "$repository" submodule update --init --depth 1 "$@" -- "$module"
 }
-prepare_submodule "$ROOT" EfiGuardDxe/Zydis --recursive
+prepare_submodule "$ROOT" EfiMirageDxe/Zydis --recursive
 for submodule in $EDK2_SUBMODULES; do
     prepare_submodule "$EDK2_DIR" "$submodule"
 done

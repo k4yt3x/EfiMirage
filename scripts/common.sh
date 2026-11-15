@@ -54,7 +54,7 @@ check_submodules() {
 
 check_dependencies() {
     check_edk2_revision
-    check_submodules "$ROOT" EfiGuardDxe/Zydis --recursive
+    check_submodules "$ROOT" EfiMirageDxe/Zydis --recursive
     for submodule in $EDK2_SUBMODULES; do
         check_submodules "$EDK2_DIR" "$submodule"
     done

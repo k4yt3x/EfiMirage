@@ -194,7 +194,7 @@ static EFI_STATUS EFIAPI MockOpen(EFI_FILE_PROTOCOL* This, EFI_FILE_PROTOCOL** N
 	}
 	else
 	{
-		CHECK(memcmp(Name, EFIGUARD_CONFIG_FILENAME, sizeof(EFIGUARD_CONFIG_FILENAME)) == 0);
+		CHECK(memcmp(Name, EFIMIRAGE_CONFIG_FILENAME, sizeof(EFIMIRAGE_CONFIG_FILENAME)) == 0);
 		if (Missing)
 			return EFI_NOT_FOUND;
 	}
@@ -249,11 +249,11 @@ static void Initialize(void)
 	File.Write = MockWrite;
 }
 
-static EFIGUARD_CONFIGURATION_DATA InitialConfig(void)
+static EFIMIRAGE_CONFIGURATION_DATA InitialConfig(void)
 {
-	EFIGUARD_CONFIGURATION_DATA Config;
+	EFIMIRAGE_CONFIGURATION_DATA Config;
 	memset(&Config, 0xA5, sizeof(Config));
-	Config.Version = EFIGUARD_CONFIGURATION_DATA_VERSION;
+	Config.Version = EFIMIRAGE_CONFIGURATION_DATA_VERSION;
 	Config.DseBypassMethod = DSE_DISABLE_SETVARIABLE_HOOK;
 	Config.WaitForKeyPress = FALSE;
 	Config.FakeSecureBoot = TRUE;
@@ -263,8 +263,8 @@ static EFIGUARD_CONFIGURATION_DATA InitialConfig(void)
 static void CheckConfig(const char* Case)
 {
 	static const char Text[] = "DseBypass = none\nWaitForKeyPress = yes\nFakeSecureBoot = 0\n";
-	EFIGUARD_CONFIGURATION_DATA Config = InitialConfig();
-	EFIGUARD_CONFIGURATION_DATA Expected = Config;
+	EFIMIRAGE_CONFIGURATION_DATA Config = InitialConfig();
+	EFIMIRAGE_CONFIGURATION_DATA Expected = Config;
 	BOOLEAN Accepted = TRUE;
 	if (strcmp(Case, "ascii") == 0 || strcmp(Case, "utf8-bom") == 0 ||
 		strcmp(Case, "exact-limit") == 0 || strcmp(Case, "oversize-prefix") == 0 ||

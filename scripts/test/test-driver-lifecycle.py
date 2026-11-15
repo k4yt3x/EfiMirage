@@ -20,15 +20,15 @@ class DriverLifecycleTests(unittest.TestCase):
         cls.work = Path(temporary.name)
         cls.binary = cls.work / "driver-lifecycle-regression"
         source = Path(os.environ.get("DRIVER_LIFECYCLE_TEST_SOURCE",
-                                     ROOT / "EfiGuardDxe/EfiGuardDxe.c"))
-        shutil.copyfile(source, cls.work / "EfiGuardDxe.c")
+                                     ROOT / "EfiMirageDxe/EfiMirageDxe.c"))
+        shutil.copyfile(source, cls.work / "EfiMirageDxe.c")
         shutil.copyfile(ROOT / "scripts/test/driver-lifecycle-regression.c",
                         cls.work / "driver-lifecycle-regression.c")
-        includes = [ROOT / "Include", ROOT / "EfiGuardDxe",
+        includes = [ROOT / "Include", ROOT / "EfiMirageDxe",
                     ROOT / "deps/edk2/MdePkg/Include",
                     ROOT / "deps/edk2/MdePkg/Include/X64",
-                    ROOT / "EfiGuardDxe/Zydis/include",
-                    ROOT / "EfiGuardDxe/Zydis/dependencies/zycore/include"]
+                    ROOT / "EfiMirageDxe/Zydis/include",
+                    ROOT / "EfiMirageDxe/Zydis/dependencies/zycore/include"]
         command = ["gcc", "-std=c11", "-fshort-wchar", "-ffunction-sections", "-fdata-sections",
                    "-DMDEPKG_NDEBUG", "-Wall", "-Wextra", "-Werror",
                    *[f"-I{path}" for path in includes], "driver-lifecycle-regression.c",

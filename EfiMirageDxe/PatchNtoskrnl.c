@@ -1,4 +1,4 @@
-#include "EfiGuardDxe.h"
+#include "EfiMirageDxe.h"
 
 #include <Library/BaseMemoryLib.h>
 
@@ -512,7 +512,7 @@ DisableDSE(
 	IN CONST UINT8* ImageBase,
 	IN PEFI_IMAGE_NT_HEADERS NtHeaders,
 	IN PEFI_IMAGE_SECTION_HEADER PageSection,
-	IN EFIGUARD_DSE_BYPASS_TYPE BypassType,
+	IN EFIMIRAGE_DSE_BYPASS_TYPE BypassType,
 	IN UINT16 BuildNumber
 	)
 {

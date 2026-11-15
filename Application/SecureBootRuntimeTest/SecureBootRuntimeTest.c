@@ -25,10 +25,10 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
 #include <Library/UefiLib.h>
-#include <Protocol/EfiGuard.h>
+#include <Protocol/EfiMirage.h>
 #include <Protocol/LoadedImage.h>
 
-#define DRIVER_PATH L"\\EFI\\BOOT\\EfiGuardDxe.efi"
+#define DRIVER_PATH L"\\EFI\\BOOT\\EfiMirageDxe.efi"
 
 STATIC UINTN mPassed = 0;
 STATIC UINTN mFailed = 0;
@@ -454,9 +454,9 @@ UefiMain(
 	SerialWrite("\r\n=== Secure Boot emulation runtime test ===\r\n");
 
 	EFI_STATUS Status = LoadDriver();
-	EFIGUARD_DRIVER_PROTOCOL* Protocol = NULL;
+	EFIMIRAGE_DRIVER_PROTOCOL* Protocol = NULL;
 	if (!EFI_ERROR(Status))
-		Status = gBS->LocateProtocol(&gEfiGuardDriverProtocolGuid, NULL, (VOID**)&Protocol);
+		Status = gBS->LocateProtocol(&gEfiMirageDriverProtocolGuid, NULL, (VOID**)&Protocol);
 	Check(Protocol != NULL, L"driver loaded and protocol located");
 	if (Protocol == NULL)
 	{
@@ -474,8 +474,8 @@ UefiMain(
 	Status = gRT->GetVariable((CHAR16*)EFI_SECURE_BOOT_MODE_NAME, &gEfiGlobalVariableGuid, NULL, &DefaultSize, &DefaultValue);
 	Check(!EFI_ERROR(Status) && DefaultValue == 1, L"emulation is on by default, before any configuration");
 
-	EFIGUARD_CONFIGURATION_DATA ConfigData = {
-		EFIGUARD_CONFIGURATION_DATA_VERSION,
+	EFIMIRAGE_CONFIGURATION_DATA ConfigData = {
+		EFIMIRAGE_CONFIGURATION_DATA_VERSION,
 		DSE_DISABLE_NONE,
 		FALSE,
 		TRUE,

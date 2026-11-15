@@ -63,7 +63,7 @@ jobs:
       - name: Upload deployment bundle
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: efiguard-x64-${{ env.BUILD_PROFILE }}
+          name: efimirage-x64-${{ env.BUILD_PROFILE }}
           path: dist/${{ env.BUILD_PROFILE }}/
           if-no-files-found: error
 

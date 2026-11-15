@@ -3,7 +3,7 @@
   BASE_NAME                      = Loader
   FILE_GUID                      = FADCFFF6-E60C-4684-A241-B203D6E6686D
   MODULE_TYPE                    = UEFI_APPLICATION
-  VERSION_STRING                 = 1.0
+  VERSION_STRING                 = 2.0.0
 
   ENTRY_POINT                    = UefiMain
 
@@ -12,7 +12,7 @@
 
 [Packages]
   MdePkg/MdePkg.dec
-  EfiGuardPkg/EfiGuardPkg.dec
+  EfiMiragePkg/EfiMiragePkg.dec
   MdeModulePkg/MdeModulePkg.dec
 
 [LibraryClasses]
@@ -36,7 +36,7 @@
   gEfiFileInfoGuid                                 ## CONSUMES
 
 [Protocols]
-  gEfiGuardDriverProtocolGuid                      ## CONSUMES
+  gEfiMirageDriverProtocolGuid                      ## CONSUMES
   gEfiLoadedImageProtocolGuid                      ## CONSUMES
   gEfiDevicePathProtocolGuid                       ## CONSUMES
   gEfiDevicePathToTextProtocolGuid                 ## CONSUMES

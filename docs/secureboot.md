@@ -1,8 +1,8 @@
 # Secure Boot emulation
 
-EfiGuard can report Secure Boot as enabled to everything that asks, regardless of what
+EfiMirage can report Secure Boot as enabled to everything that asks, regardless of what
 the firmware is actually configured to do. The firmware's own behaviour is unchanged: it
-still validates whatever it validates, and unsigned EfiGuard images still have to be
+still validates whatever it validates, and unsigned EfiMirage images still have to be
 loadable by it (Secure Boot disabled, or the images signed and enrolled).
 
 The goal is the software side of Secure Boot, which is what games, anti-cheat and Windows
@@ -45,12 +45,16 @@ firmware driver entry with no loader involved. To turn it off for one boot, pres
 within 1.5 seconds in the loader and answer No to "Report Secure Boot as enabled to Windows
 and software running on it?".
 
-For unattended boots, put `\EFI\EfiGuard\EfiGuard.cfg` on the same volume as the loader.
+For unattended boots, put `\EFI\EfiMirage\EfiMirage.cfg` on the same volume as the loader.
 It is applied when the loader starts; holding `HOME` still opens the prompts, which begin
 from the values the file set, so a file never makes the prompt unreachable.
 
+When upgrading from EfiGuard, move `\EFI\EfiGuard\EfiGuard.cfg` to the new path without
+changing its keys or values. There is **no fallback** to the old path. See the full
+[migration steps](../README.md#migrating-from-efiguard), including driver-entry updates.
+
 ```ini
-# EfiGuard.cfg; UTF-16LE or ASCII, case-insensitive keys, '#' starts a comment
+# EfiMirage.cfg; UTF-16LE or ASCII, case-insensitive keys, '#' starts a comment
 DseBypass = hook        # hook | boot | none
 WaitForKeyPress = 0
 FakeSecureBoot = 0      # omit to keep the default (on)
@@ -62,8 +66,9 @@ other volumes, not the directory containing the loader. The maximum file size is
 including any encoding BOM. Larger files are reported and ignored in full, leaving the
 existing settings unchanged; shorten the file before retrying.
 
-Programmatically, it is `EFIGUARD_CONFIGURATION_DATA.FakeSecureBoot`, sent through the
-driver protocol `Configure()` together with `Version = EFIGUARD_CONFIGURATION_DATA_VERSION`.
+Programmatically, use `Include/Protocol/EfiMirage.h` and `gEfiMirageDriverProtocolGuid`.
+The setting is `EFIMIRAGE_CONFIGURATION_DATA.FakeSecureBoot`, sent through the driver
+protocol `Configure()` together with `Version = EFIMIRAGE_CONFIGURATION_DATA_VERSION`.
 A mismatched version or an out-of-range DSE bypass method is refused before anything is
 committed. `Configure()` may be called repeatedly until Windows boot manager is loaded, so
 the feature can be turned back off.
@@ -71,7 +76,7 @@ the feature can be turned back off.
 ## What it does not do
 
 - **TPM and BitLocker.** Secure Boot state is measured into PCR 7 by the firmware before
-  EfiGuard exists, and the TPM event log keeps the real values. BitLocker with a PCR 7
+  EfiMirage exists, and the TPM event log keeps the real values. BitLocker with a PCR 7
   profile will ask for the recovery key. Faking is not possible from this layer.
 - **Firmware validation.** Shapes such as `db`/`dbx`/`PK` are still the real ones. A
   missing or foreign `db` does not stop the boot because `ImgpValidateImageHash` is already
@@ -126,8 +131,8 @@ copying `{bootmgr}`; both are skipped silently and the next entry is used, which
 exactly like a crash. Point the entry the firmware actually boots at the loader instead:
 
 ```bat
-bcdedit /copy {bootmgr} /d "EfiGuard Test"     :: only needed once, and not used by OVMF
-bcdedit /set {bootmgr} path \EFI\EfiGuard\Loader.efi
+bcdedit /copy {bootmgr} /d "EfiMirage Test"     :: only needed once, and not used by OVMF
+bcdedit /set {bootmgr} path \EFI\EfiMirage\Loader.efi
 ```
 
 To confirm the firmware really took the entry, the loader writes

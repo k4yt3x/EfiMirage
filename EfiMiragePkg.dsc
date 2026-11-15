@@ -1,9 +1,9 @@
 [Defines]
-  PLATFORM_NAME                  = EfiGuard
+  PLATFORM_NAME                  = EfiMirage
   PLATFORM_GUID                  = C5ACE17D-FD90-44F7-847C-693ED2B8BEF9
-  PLATFORM_VERSION               = 1.00
+  PLATFORM_VERSION               = 2.0.0
   DSC_SPECIFICATION              = 0x0001001B
-  OUTPUT_DIRECTORY               = Build/EfiGuard
+  OUTPUT_DIRECTORY               = Build/EfiMirage
   SUPPORTED_ARCHITECTURES        = X64
   BUILD_TARGETS                  = DEBUG|RELEASE|NOOPT
   SKUID_IDENTIFIER               = DEFAULT
@@ -83,14 +83,14 @@
 
 [Components]
   # DXE driver
-  EfiGuardPkg/EfiGuardDxe/EfiGuardDxe.inf
+  EfiMiragePkg/EfiMirageDxe/EfiMirageDxe.inf
 
   # Loader application
-  EfiGuardPkg/Application/Loader/Loader.inf
+  EfiMiragePkg/Application/Loader/Loader.inf
 
   # Secure Boot emulation self-test, built for the OVMF harness; not part of a bundle
-  EfiGuardPkg/Application/SecureBootTest/SecureBootTest.inf
-  EfiGuardPkg/Application/SecureBootRuntimeTest/SecureBootRuntimeTest.inf
+  EfiMiragePkg/Application/SecureBootTest/SecureBootTest.inf
+  EfiMiragePkg/Application/SecureBootRuntimeTest/SecureBootRuntimeTest.inf
 
 [BuildOptions.Common]
   *_*_*_CC_FLAGS = -D DISABLE_NEW_DEPRECATED_INTERFACES

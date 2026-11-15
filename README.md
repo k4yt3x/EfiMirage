@@ -1,4 +1,7 @@
-# EfiGuard — custom fork
+# EfiMirage
+
+EfiMirage is a fork of [EfiGuard](https://github.com/Mattiwatti/EfiGuard) by
+[Mattiwatti](https://github.com/Mattiwatti).
 
 This fork adds Secure Boot state emulation on top of upstream: the driver can make
 `SecureBoot` read as enabled and `SetupMode` as user mode, to Windows and the software on
@@ -19,13 +22,14 @@ Run `just` to list tasks. See the [build guide](docs/build.md) for prerequisites
 workspace layout, profiles, logs, cleanup, and testing status. Build tooling and
 source code share this repository; generated files are ignored.
 
-The upstream overview and usage documentation follow. Its compatibility claims
-are not a record of runtime validation of this fork.
+The overview, feature descriptions, and architecture history below are adapted from
+upstream EfiGuard. Upstream compatibility claims are not a record of runtime validation
+of this fork; see the [validation status](docs/build.md#validation-status).
 
 # Overview
-EfiGuard is a portable x64 UEFI bootkit that patches the Windows boot manager, boot loader and kernel at boot time in order to disable PatchGuard and Driver Signature Enforcement (DSE).
+EfiMirage is a portable x64 UEFI bootkit that patches the Windows boot manager, boot loader and kernel at boot time in order to disable PatchGuard and Driver Signature Enforcement (DSE).
 
-If you're just looking to try EfiGuard, skip to [Usage](#usage).
+If you're just looking to try EfiMirage, skip to [Usage](#usage).
 
 # Features
 - Currently supports all EFI-compatible versions of Windows x64 ever released, from Vista SP1 to Windows 11.
@@ -45,17 +49,20 @@ If you're just looking to try EfiGuard, skip to [Usage](#usage).
 - Debuggable: can output messages to a kernel debugger and to the screen (albeit buffered) during the kernel patching stage, and to a serial port or unbuffered to the screen during the boot manager and boot loader patching stages. If the driver is compiled with PDB debug information, it is possible to load the debug symbols at any point after HAL initialization by specifying the virtual DXE driver base and debugging it as you would a regular NT driver.
 - DSE bypasses: available as either a straightforward [UPGDSED](https://github.com/hfiref0x/UPGDSED)-style DSE disable at boot time or as a hook on the `SetVariable()` EFI runtime service. The latter serves as an arbitrary kernel mode read/write backdoor that can be called from Windows using `NtSetSystemEnvironmentValueEx` and allows setting `g_CiEnabled`/`g_CiOptions` to the desired value. A small DSEFix-style application named `EfiDSEFix.exe` is provided that can be used to do this. It is also possible to leave DSE enabled and to disable only PatchGuard. The loader will use the `SetVariable` hook method by default, due to the fact that some anti-cheat and anti-virus programs do not understand the difference between cheats or malware and self-signed drivers in general and target the UPGDSED fix.
 - Supports on-disk modified kernels and boot loaders by patching `ImgpValidateImageHash` at every stage as well as `ImgpFilterValidationFailure`, which may silently rat out some classes of violations to a TPM or the SI log file.
-- Allows Secure Boot to work with Windows 7 (not a joke!). Windows 7 itself is oblivious to Secure Boot as it does not support it, or (<a href="https://msdn.microsoft.com/en-us/ie/dn938339(v=vs.60)">officially</a>) even booting without CSM. This is useful for people who want to use Windows 7 on a locked down device that requires WHQL Secure Boot. Wiki entry on how to get this to work [here](https://github.com/Mattiwatti/EfiGuard/wiki/Secure-boot-on-Windows-7).
+- Allows Secure Boot to work with Windows 7 (not a joke!). Windows 7 itself is oblivious to Secure Boot as it does not support it, or (<a href="https://msdn.microsoft.com/en-us/ie/dn938339(v=vs.60)">officially</a>) even booting without CSM. This is useful for people who want to use Windows 7 on a locked down device that requires WHQL Secure Boot. The upstream EfiGuard wiki explains how to get this to work [here](https://github.com/Mattiwatti/EfiGuard/wiki/Secure-boot-on-Windows-7).
   ![win7_secureboot](.github/img/Win7SecureBoot.png)
 
   [WinObjEx64](https://github.com/hfiref0x/WinObjEx64) on Windows 7 with Secure Boot enabled
 
 # Issues and limitations
-- EfiGuard can not disable Hypervisor-enforced Code Integrity (HVCI or HyperGuard) due to HVCI running at a greater privilege level. EfiGuard **can** coexist with HVCI and even successfully disables PatchGuard in the normal kernel, but this is not useful in practice because HVCI will catch what PatchGuard did previously. Both types of DSE bypass are rendered useless by HVCI: the boot time patch has no effect because the kernel defers to the secure kernel for integrity checks, and the `SetVariable` hook will cause a `SECURE_KERNEL_ERROR` bugcheck if it is used to write to `g_CiOptions`.
+
+Report EfiMirage bugs in this repository's issue tracker, not the upstream EfiGuard tracker.
+
+- EfiMirage can not disable Hypervisor-enforced Code Integrity (HVCI or HyperGuard) due to HVCI running at a greater privilege level. EfiMirage **can** coexist with HVCI and even successfully disables PatchGuard in the normal kernel, but this is not useful in practice because HVCI will catch what PatchGuard did previously. Both types of DSE bypass are rendered useless by HVCI: the boot time patch has no effect because the kernel defers to the secure kernel for integrity checks, and the `SetVariable` hook will cause a `SECURE_KERNEL_ERROR` bugcheck if it is used to write to `g_CiOptions`.
 - Checked kernels are not supported due to the differences in PatchGuard and DSE initialization code caused by disabled optimizations and added asserts, as well as additional changes to PatchGuard in checked kernels. This should not be an issue as checked kernels are not generally useful without a kernel debugger attached, which disables PatchGuard.
 
 # Usage
-There are two ways to use EfiGuard: booting the **loader application**, which will load the driver and start Windows for you, or installing the driver as a **UEFI driver entry** so it will be loaded automatically by the firmware.
+There are two ways to use EfiMirage: booting the **loader application**, which will load the driver and start Windows for you, or installing the driver as a **UEFI driver entry** so it will be loaded automatically by the firmware.
 
 Installing the driver can be preferable in some advanced configurations such as when multi-booting, but the loader is easiest to use and should work well in all configurations. See the table below for the most important differences between the two methods. If unsure, choose the **loader application**.
 
@@ -67,28 +74,30 @@ Installing the driver can be preferable in some advanced configurations such as 
 Loader vs UEFI driver entry comparison
 
 ## Booting the loader
-1. Download EfiGuard and rename `EFI/Boot/Loader.efi` to `bootx64.efi`.
-2. Place the files on a boot drive such as a FAT32 formatted USB stick (for physical machines) or an ISO/virtual disk (for VMs).
-   Assuming drive `X:`, the paths for the two files should now be `X:/EFI/Boot/{bootx64|EfiGuardDxe}.efi`
+1. Download and extract the EfiMirage bundle. It contains `Loader.efi`, `EfiMirageDxe.efi`,
+   `EfiDSEFix.exe`, and `SHA256SUMS` at the archive root.
+2. Create `EFI/Boot` on a boot drive, such as a FAT32 USB stick or a VM disk. Copy the two
+   `.efi` files there and rename the copied `Loader.efi` to `bootx64.efi`.
+   Assuming drive `X:`, the paths should be `X:/EFI/Boot/{bootx64|EfiMirageDxe}.efi`.
 3. Boot the machine from the drive you used in step 2.
    Most firmwares provide a boot menu to do this via F8/F10/F11/F12. If not, you will need to configure the BIOS to boot from the new drive.
-4. Windows should now boot, and you should see EfiGuard messages during boot.
-   To configure without the `HOME` prompt, place `\EFI\EfiGuard\EfiGuard.cfg` on the same
+4. Windows should now boot, and you should see EfiMirage messages during boot.
+   To configure without the `HOME` prompt, place `\EFI\EfiMirage\EfiMirage.cfg` on the same
    volume (see [docs/secureboot.md](docs/secureboot.md)). The loader reads it; a driver that is
    installed as a firmware driver entry and never goes through the loader uses the compiled-in
    defaults instead.
 5. If you booted with the `SetVariable` hook (the default), run `EfiDSEFix.exe -d` from an Administrator command prompt after boot to disable DSE, or run `EfiDSEFix.exe` to see the full list of options.
 
-Note that you **don't need to use a separate drive** for the loader. If preferable, you can install EfiGuard on the ESP that Windows is already installed on. However, this is somewhat more complicated as you will need to add a UEFI boot entry for the loader.
+Note that you **don't need to use a separate drive** for the loader. If preferable, you can install EfiMirage on the ESP that Windows is already installed on. However, this is somewhat more complicated as you will need to add a UEFI boot entry for the loader.
 
-To do this, mount the ESP at `X:` using `mountvol X: /S` and follow the steps above, but do **not** rename the loader and simply copy both files to `X:/EFI/Boot`. After that, you will need to manually add a UEFI boot entry from the [UEFI Shell](https://github.com/tianocore/edk2/blob/edk2-stable201903/ShellBinPkg/UefiShell/X64/Shell.efi?raw=true) using `bcfg boot addp 0 Loader.efi "EfiGuard"`, or alternatively using `efibootmgr` (Linux), EasyUEFI (Windows), or similar.
+To do this, mount the ESP at `X:` using `mountvol X: /S` and follow the steps above, but do **not** rename the loader and simply copy both files to `X:/EFI/Boot`. After that, you will need to manually add a UEFI boot entry from the [UEFI Shell](https://github.com/tianocore/edk2/blob/edk2-stable201903/ShellBinPkg/UefiShell/X64/Shell.efi?raw=true) using `bcfg boot addp 0 Loader.efi "EfiMirage"`, or alternatively using `efibootmgr` (Linux), EasyUEFI (Windows), or similar.
 
 ## Installing the driver
 1. Mount the ESP at `X:` using `mountvol X: /S`.
-2. Copy `EfiGuardDxe.efi` to `X:/EFI/Boot/EfiGuardDxe.efi`.
-3. Boot to the [UEFI Shell](https://github.com/tianocore/edk2/blob/edk2-stable201903/ShellBinPkg/UefiShell/X64/Shell.efi?raw=true) and add a UEFI driver entry: `bcfg driver add 0 EfiGuardDxe.efi "EfiGuardDxe"`.
-4. Windows should now boot, and you should see EfiGuard messages during boot.
-   To configure without the `HOME` prompt, place `\EFI\EfiGuard\EfiGuard.cfg` on the same
+2. Copy `EfiMirageDxe.efi` to `X:/EFI/Boot/EfiMirageDxe.efi`.
+3. Boot to the [UEFI Shell](https://github.com/tianocore/edk2/blob/edk2-stable201903/ShellBinPkg/UefiShell/X64/Shell.efi?raw=true) and add a UEFI driver entry: `bcfg driver add 0 EfiMirageDxe.efi "EfiMirageDxe"`.
+4. Windows should now boot, and you should see EfiMirage messages during boot.
+   To configure without the `HOME` prompt, place `\EFI\EfiMirage\EfiMirage.cfg` on the same
    volume (see [docs/secureboot.md](docs/secureboot.md)). The loader reads it; a driver that is
    installed as a firmware driver entry and never goes through the loader uses the compiled-in
    defaults instead.
@@ -98,31 +107,66 @@ To do this, mount the ESP at `X:` using `mountvol X: /S` and follow the steps ab
 
 **Note**: some very old or noncompliant firmwares may not support this method of installation at all. On these systems you will have no option but to use the loader instead.
 
+# Migrating from EfiGuard
+
+The rename to EfiMirage changes public names and paths, not behavior or features.
+For an existing installation:
+
+1. Replace `EfiGuardDxe.efi` with the new `EfiMirageDxe.efi` build beside the loader,
+   or at the location used by your firmware driver entry. Update `Loader.efi` from
+   the same release so it uses the new driver and config paths. Update deployment
+   scripts that refer to the old driver name.
+2. Move `\EFI\EfiGuard\EfiGuard.cfg` to `\EFI\EfiMirage\EfiMirage.cfg` on the loader's
+   volume. Configuration keys and values are unchanged. The path is absolute from
+   the volume root; the loader does **not** fall back to the old path.
+3. Update UEFI boot and driver entries to the new deployed paths and labels as needed.
+   `Loader.efi` and `EfiDSEFix.exe` keep their names; the firmware fallback name
+   `bootx64.efi` is unchanged too.
+4. Remove or disable old driver entries before loading EfiMirage. **Do not load
+   EfiGuard and EfiMirage drivers together**: they use the same protocol GUID.
+
+For source integrations, use `EfiMirageDxe/`, `EfiMiragePkg.dec`, `EfiMiragePkg.dsc`,
+`EfiMirage.sln`, and `EfiMirage.props`. The protocol header is now
+`Include/Protocol/EfiMirage.h`; C names use `EFIMIRAGE_*` and
+`gEfiMirageDriverProtocolGuid`. Build output uses `Build/EfiMirage`.
+Use `efimirage` as the repository slug. Renaming the hosted repository and updating
+clone remotes are separate from the source and build rename.
+
+The rename preserves GUID values, the configuration schema version, and structure layouts
+from this fork's pre-rename builds. The legacy backdoor variable string (`roodkcaBdrauGifE`,
+reversed `EfiGuardBackdoor`) and cookie (`0xDEADC0DE`) are also intentionally unchanged.
+These compatibility identifiers are not old configuration-path aliases.
+
 # Compilation
 
 For this fork's Linux workflow, use `just build` and the [build guide](docs/build.md).
 The manual EDK2 and Visual Studio workflows below remain available.
 
-## Compiling EfiGuardDxe and the loader
-EfiGuard requires EDK2 to build. If you don't have EDK2 installed, follow the steps in [Getting Started with EDK2](https://github.com/tianocore/tianocore.github.io/wiki/Getting-Started-with-EDK-II) first as the EDK2 build system is fairly complex to set up. This section assumes you have a `workspace` directory that your `WORKSPACE` environment variable points to, with a copy of EDK2 checked out in `workspace/edk2`. Supported compilers are MSVC, Clang, GCC and ICC.
-1. Clone the EfiGuard repository into `workspace/edk2/EfiGuardPkg`.
+## Compiling EfiMirageDxe and the loader
+EfiMirage requires EDK2 to build. If you don't have EDK2 installed, follow the steps in [Getting Started with EDK2](https://github.com/tianocore/tianocore.github.io/wiki/Getting-Started-with-EDK-II) first as the EDK2 build system is fairly complex to set up. This section assumes you have a `workspace` directory that your `WORKSPACE` environment variable points to, with a copy of EDK2 checked out in `workspace/edk2`. Supported compilers are MSVC, Clang, GCC and ICC.
+1. Clone the EfiMirage repository into `workspace/edk2/EfiMiragePkg`.
 2. Open a prompt or shell that sets up the environment variables for EDK2.
-3. Run `build -a X64 -t VS2019 -p EfiGuardPkg/EfiGuardPkg.dsc -b RELEASE`, substituting your toolchain for VS2019.
+3. Run `build -a X64 -t VS2019 -p EfiMiragePkg/EfiMiragePkg.dsc -b RELEASE`, substituting your toolchain for VS2019.
 
-This will produce `EfiGuardDxe.efi` and `Loader.efi` in `workspace/Build/EfiGuard/RELEASE_VS2019/X64`.
+This will produce `EfiMirageDxe.efi` and `Loader.efi` in `workspace/Build/EfiMirage/RELEASE_VS2019/X64`.
 
 ## Compiling EfiDSEFix
 For a native Windows build, EfiDSEFix uses Visual Studio. The Linux workflow above
 cross-compiles it with MinGW-w64 instead.
-1. Open `EfiGuard.sln` and build the solution.
+1. Open `EfiMirage.sln` and build the solution.
 
 The output binary `EfiDSEFix.exe` will be in `Application/EfiDSEFix/bin`.
 
-The Visual Studio solution also includes projects for `EfiGuardDxe.efi` and `Loader.efi` which can be used with [VisualUefi](https://github.com/ionescu007/VisualUefi), but these projects are not built by default as they will not link without additional code, and the build output will be inferior (bigger) than what EDK2 produces. `Loader.efi` will not link at all due to VisualUefi missing UefiBootManagerLib. These project files are thus meant as a development aid only and the EFI files should still be compiled with EDK2. To set up VisualUefi for this purpose, clone the repository into `workspace/VisualUefi` and open `EfiGuard.sln`.
+The Visual Studio solution also includes projects for `EfiMirageDxe.efi` and `Loader.efi` which can be used with [VisualUefi](https://github.com/ionescu007/VisualUefi), but these projects are not built by default as they will not link without additional code, and the build output will be inferior (bigger) than what EDK2 produces. `Loader.efi` will not link at all due to VisualUefi missing UefiBootManagerLib. These project files are thus meant as a development aid only and the EFI files should still be compiled with EDK2. To set up VisualUefi for this purpose, clone the repository into `workspace/VisualUefi` and open `EfiMirage.sln`.
 
 # Architecture
-  ![architecture](.github/img/EfiGuard.svg)
-While EfiGuard is a UEFI bootkit, it did not start out as one. EfiGuard was originally an on-disk patcher running on NT (similar to [UPGDSED](https://github.com/hfiref0x/UPGDSED)), intended to test the viability of a disassembler-based aproach, as opposed to using PDB symbols and version-specific signatures. [PatchNtoskrnl.c](EfiGuardDxe/PatchNtoskrnl.c) still looks very much like this original design. Only after this approach proved successful, with no modifications to code needed in over a year of Windows updates, did UEFI come into the picture as a way to further improve capabilities and ease of use.
+  ![architecture](.github/img/EfiMirage.svg)
+EfiMirage inherits its boot architecture from upstream EfiGuard. In the upstream
+project's history, EfiGuard began as an on-disk NT patcher, similar to
+[UPGDSED](https://github.com/hfiref0x/UPGDSED), to test disassembler-based analysis
+instead of PDB symbols and version-specific signatures. Upstream later adopted UEFI
+to improve capabilities and ease of use. [PatchNtoskrnl.c](EfiMirageDxe/PatchNtoskrnl.c)
+still reflects that original design.
 
 Some of the benefits provided by a bootkit approach include:
 - No on-disk modifications to kernels or bootloaders needed.
@@ -130,14 +174,18 @@ Some of the benefits provided by a bootkit approach include:
 - No need to patch `ImgpValidateImageHash` (although this is still optionally done).
 - Ironically, the use of a bootkit allows enabling Secure Boot, provided you own the Platform Key and are able to add your personal certificate to the `db` store.
 
-The initial incarnation of EfiGuard as a bootkit was an attempt to get dude719's [UEFI-Bootkit](https://github.com/ajkhoury/UEFI-Bootkit) to work with recent versions of Windows 10, because it had become dated and no longer works on the latest versions (like UPGDSED, often caused by version-sensitive pattern scans). While I did eventually get this to work, I was unsatisfied with the result mostly due to the choice of hooking `OslArchTransferToKernel`, which as noted above executes in protected mode and after `ExitBootServices` has been called. Apart from this, I was not satisfied with only being able to patch some versions of Windows 10; I wanted the bootkit to work on every EFI-compatible version of Windows x64 released to date. Because of this, I rewrote the bootkit from scratch with the following aims:
+Upstream author Mattiwatti first adapted dude719's
+[UEFI-Bootkit](https://github.com/ajkhoury/UEFI-Bootkit) for newer Windows 10 versions,
+then rewrote EfiGuard to avoid the limitations of hooking `OslArchTransferToKernel`
+after `ExitBootServices` and to support more Windows versions. The upstream design aims were:
 - To provide patch information at every stage of boot including the kernel patch itself.
 - To support all EFI-compatible versions of Windows versions (at the time of writing).
 - To enable lazy instantiation of the bootkit and optionally a kernel backdoor, achieved by EFI System Table hooks.
 
-A big picture overview of the final EfiGuard boot flow is shown in the diagram above. For the individual component-specific hooks and patches, see `EfiGuardDxe/PatchXxx.c` in the source files. For driver initialization/unloading and the EFI Boot and Runtime Services hooks, see [EfiGuardDxe.c](EfiGuardDxe/EfiGuardDxe.c).
+A big picture overview of the final EfiMirage boot flow is shown in the diagram above. For the individual component-specific hooks and patches, see `EfiMirageDxe/PatchXxx.c` in the source files. For driver initialization/unloading and the EFI Boot and Runtime Services hooks, see [EfiMirageDxe.c](EfiMirageDxe/EfiMirageDxe.c).
 
 # Credits
+- [EfiGuard](https://github.com/Mattiwatti/EfiGuard) by [Mattiwatti](https://github.com/Mattiwatti), the upstream project
 - [UPGDSED](https://github.com/hfiref0x/UPGDSED) by [hfiref0x](https://github.com/hfiref0x) and [Fyyre](https://github.com/Fyyre)
 - [Zydis](https://github.com/zyantific/zydis) by [zyantific](https://zydis.re)
 - [Uninformed](http://uninformed.org/) articles on PatchGuard [v1](http://uninformed.org/index.cgi?v=3&a=3&t=pdf), [v2](http://www.uninformed.org/?v=6&a=1&t=pdf) and [v3](http://uninformed.org/index.cgi?v=8&a=5&t=pdf) by Skywing
@@ -145,4 +193,4 @@ A big picture overview of the final EfiGuard boot flow is shown in the diagram a
 - [ReactOS](https://reactos.org)
 
 # License
-EfiGuard is licensed under the GPLv3. Files in the `EfiGuardDxe/Zydis` submodule are licensed under the MIT license.
+EfiMirage is licensed under the GPLv3. Files in the `EfiMirageDxe/Zydis` submodule are licensed under the MIT license.

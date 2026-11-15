@@ -23,7 +23,7 @@
     <EnableStdModules>false</EnableStdModules>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
-  <Import Project="$(SolutionDir)\EfiGuard.props" />
+  <Import Project="$(SolutionDir)\EfiMirage.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="PropertySheets">
     <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
@@ -42,7 +42,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="EfiGuardDxe.c" />
+    <ClCompile Include="EfiMirageDxe.c" />
     <ClCompile Include="PatchBootmgr.c" />
     <ClCompile Include="PatchNtoskrnl.c" />
     <ClCompile Include="PatchWinload.c" />
@@ -86,9 +86,9 @@
     <None Include="X64\Cet.nasm" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\Include\Protocol\EfiGuard.h" />
+    <ClInclude Include="..\Include\Protocol\EfiMirage.h" />
     <ClInclude Include="arc.h" />
-    <ClInclude Include="EfiGuardDxe.h" />
+    <ClInclude Include="EfiMirageDxe.h" />
     <ClInclude Include="ntdef.h" />
     <ClInclude Include="pe.h" />
     <ClInclude Include="util.h" />

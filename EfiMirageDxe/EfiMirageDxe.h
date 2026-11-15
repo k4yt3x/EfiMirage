@@ -3,7 +3,7 @@
 #include <Uefi.h>
 
 #include <Protocol/DriverSupportedEfiVersion.h>
-#include <Protocol/EfiGuard.h>
+#include <Protocol/EfiMirage.h>
 #include <Library/UefiLib.h>
 #include <Library/DebugLib.h>
 #include <Library/MemoryAllocationLib.h>
@@ -21,14 +21,14 @@ extern "C" {
 #endif
 
 //
-// EfiGuard driver protocol handle
+// EfiMirage driver protocol handle
 //
-extern EFIGUARD_DRIVER_PROTOCOL gEfiGuardDriverProtocol;
+extern EFIMIRAGE_DRIVER_PROTOCOL gEfiMirageDriverProtocol;
 
 //
 // Driver configuration data
 //
-extern EFIGUARD_CONFIGURATION_DATA gDriverConfig;
+extern EFIMIRAGE_CONFIGURATION_DATA gDriverConfig;
 
 //
 // (Un)hooks a service table pointer, replacing its value with NewFunction and returning the original address.

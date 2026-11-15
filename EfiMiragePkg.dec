@@ -1,21 +1,21 @@
 [Defines]
   DEC_SPECIFICATION              = 0x00010019
-  PACKAGE_NAME                   = EfiGuardPkg
+  PACKAGE_NAME                   = EfiMiragePkg
   PACKAGE_GUID                   = 6BFA833B-A9DF-490D-AF7E-7F92A80E3F9A
-  PACKAGE_VERSION                = 1.00
+  PACKAGE_VERSION                = 2.0.0
 
 [Includes]
   Include
   Include/Protocol
-  EfiGuardDxe
-  EfiGuardDxe/Zydis/dependencies/zycore/include
-  EfiGuardDxe/Zydis/include
-  EfiGuardDxe/Zydis/src
-  EfiGuardDxe/Zydis/msvc
+  EfiMirageDxe
+  EfiMirageDxe/Zydis/dependencies/zycore/include
+  EfiMirageDxe/Zydis/include
+  EfiMirageDxe/Zydis/src
+  EfiMirageDxe/Zydis/msvc
 
 [Protocols]
-  ## Include/Protocol/EfiGuard.h
-  gEfiGuardDriverProtocolGuid    = { 0x51e4785b, 0xb1e4, 0x4fda, { 0xaf, 0x5f, 0x94, 0x2e, 0xc0, 0x15, 0xf1, 0x7 }}
+  ## Include/Protocol/EfiMirage.h
+  gEfiMirageDriverProtocolGuid    = { 0x51e4785b, 0xb1e4, 0x4fda, { 0xaf, 0x5f, 0x94, 0x2e, 0xc0, 0x15, 0xf1, 0x7 }}
 
   ## Originally in OvmfPkg/Csm/Include/Protocol/LegacyBios.h
   gEfiLegacyBiosProtocolGuid     = { 0xdb9a1e3d, 0x45cb, 0x4abb, {0x85, 0x3b, 0xe5, 0x38, 0x7f, 0xdb, 0x2e, 0x2d }}

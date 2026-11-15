@@ -5,7 +5,7 @@ labels: ["feature"]
 body:
   - type: markdown
     attributes:
-      value: Before filing this request, [please check if it hasn't already been suggested before](https://github.com/Mattiwatti/EfiGuard/issues?q=is%3Aissue+label%3Afeature). If it has, please add to the existing issue instead.
+      value: Before filing this EfiMirage request, search this repository's issues for an existing suggestion. If it has already been suggested, please add to the existing issue instead.
 
   - type: textarea
     id: description

@@ -1,4 +1,4 @@
-#include "EfiGuardDxe.h"
+#include "EfiMirageDxe.h"
 #include "util.h"
 
 #include <Library/UefiLib.h>

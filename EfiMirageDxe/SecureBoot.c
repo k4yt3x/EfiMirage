@@ -17,7 +17,7 @@
   only being installed on demand.
 **/
 
-#include "EfiGuardDxe.h"
+#include "EfiMirageDxe.h"
 
 #include <Guid/ImageAuthentication.h>
 #include <Library/BaseMemoryLib.h>
@@ -27,7 +27,7 @@
 // the secure boot state variables as boot service + runtime access only, without the
 // non-volatile bit the specification's global variable table lists, so match that.
 //
-#define EFIGUARD_SECURE_BOOT_VARIABLE_ATTRIBUTES \
+#define EFIMIRAGE_SECURE_BOOT_VARIABLE_ATTRIBUTES \
 	(EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS)
 
 //
@@ -128,7 +128,7 @@ ReadFakeVariable(
 	}
 
 	if (Attributes != NULL)
-		*Attributes = EFIGUARD_SECURE_BOOT_VARIABLE_ATTRIBUTES;
+		*Attributes = EFIMIRAGE_SECURE_BOOT_VARIABLE_ATTRIBUTES;
 
 	return Status;
 }

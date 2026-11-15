@@ -1,4 +1,4 @@
-#include "EfiGuardDxe.h"
+#include "EfiMirageDxe.h"
 
 #include <Library/BaseLib.h>
 #include <Library/BaseMemoryLib.h>

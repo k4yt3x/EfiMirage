@@ -121,7 +121,7 @@
       <rect x="-71.5" width="120" height="65" y="121.5" clip-path="url(#clipPath2)" stroke="none"/>
     </g>
     <g stroke-linecap="butt" font-size="14px" transform="matrix(0.9577,0,0,0.9577,193.4463,-76.6124)" fill="white" text-rendering="geometricPrecision" font-family="sans-serif" shape-rendering="geometricPrecision" stroke="white" font-weight="bold" stroke-miterlimit="1.45">
-      <text x="-64.0137" xml:space="preserve" y="159.4995" clip-path="url(#clipPath2)" stroke="none">EfiGuardDxe.efi</text>
+      <text x="-64.0137" xml:space="preserve" y="159.4995" clip-path="url(#clipPath2)" stroke="none">EfiMirageDxe.efi</text>
     </g>
     <g stroke-linecap="butt" transform="matrix(0.9577,0,0,0.9577,193.4463,-76.6124)" fill="rgb(51,51,0)" text-rendering="geometricPrecision" shape-rendering="geometricPrecision" stroke="rgb(51,51,0)" stroke-miterlimit="1.45">
       <rect fill="none" x="-71.5" width="120" height="65" y="121.5" clip-path="url(#clipPath2)"/>

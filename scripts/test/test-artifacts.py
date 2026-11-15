@@ -19,7 +19,7 @@ SPEC = importlib.util.spec_from_file_location("artifacts", SCRIPT)
 artifacts = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(artifacts)
 
-NAMES = ("EfiGuardDxe.efi", "Loader.efi", "EfiDSEFix.exe")
+NAMES = ("EfiMirageDxe.efi", "Loader.efi", "EfiDSEFix.exe")
 PE = 128
 OPTIONAL = PE + 24
 SECTIONS = OPTIONAL + 240
@@ -62,7 +62,7 @@ class ArtifactTests(unittest.TestCase):
 
     def inputs(self, profile="release", marker=1):
         paths = {
-            "EfiGuardDxe.efi": (f"efi/{profile}/EfiGuardDxe.efi", 12),
+            "EfiMirageDxe.efi": (f"efi/{profile}/EfiMirageDxe.efi", 12),
             "Loader.efi": (f"efi/{profile}/Loader.efi", 10),
             "EfiDSEFix.exe": (f"windows/{profile}/console/EfiDSEFix.exe", 3),
         }

@@ -12,7 +12,7 @@ import tempfile
 
 PROFILES = ("release", "debug", "noopt")
 ARTIFACTS = (
-    ("EfiGuardDxe.efi", "efi/{profile}/EfiGuardDxe.efi", 12),
+    ("EfiMirageDxe.efi", "efi/{profile}/EfiMirageDxe.efi", 12),
     ("Loader.efi", "efi/{profile}/Loader.efi", 10),
     ("EfiDSEFix.exe", "windows/{profile}/console/EfiDSEFix.exe", 3),
 )

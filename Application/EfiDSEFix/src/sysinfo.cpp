@@ -253,7 +253,7 @@ ReadSecureBootRegistryState(
 
 //
 // Reports what Windows sees of the Secure Boot state from every source an application can
-// practically use. With EfiGuard's Secure Boot emulation active these all agree on "enabled";
+// practically use. With EfiMirage's Secure Boot emulation active these all agree on "enabled";
 // on a machine with Secure Boot genuinely off they agree on "disabled".
 //
 NTSTATUS

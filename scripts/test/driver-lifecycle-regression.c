@@ -7,7 +7,7 @@
 #undef NULL
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
-#include "EfiGuardDxe.c"
+#include "EfiMirageDxe.c"
 #pragma GCC diagnostic pop
 
 static unsigned Failures;
@@ -17,7 +17,7 @@ static unsigned Failures;
 
 EFI_GUID gEfiLoadedImageProtocolGuid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
 EFI_GUID gEfiDriverSupportedEfiVersionProtocolGuid = EFI_DRIVER_SUPPORTED_EFI_VERSION_PROTOCOL_GUID;
-EFI_GUID gEfiGuardDriverProtocolGuid = EFI_EFIGUARD_DRIVER_PROTOCOL_GUID;
+EFI_GUID gEfiMirageDriverProtocolGuid = EFI_EFIMIRAGE_DRIVER_PROTOCOL_GUID;
 EFI_GUID gEfiSimpleTextInputExProtocolGuid = EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL_GUID;
 EFI_GUID gEfiShellProtocolGuid = EFI_SHELL_PROTOCOL_GUID;
 EFI_GUID gEfiEventExitBootServicesGuid = EFI_EVENT_GROUP_EXIT_BOOT_SERVICES;
@@ -42,7 +42,7 @@ static BOOLEAN SecureBootInstalled, FailVirtualEvent;
 static UINTN SecureBootUninstalls, Conversions;
 static jmp_buf BootExit;
 static CHAR16 ExitMessage[] = L"mock image exit";
-static CHAR16 ProbeName[] = EFIGUARD_BACKDOOR_VARIABLE_NAME;
+static CHAR16 ProbeName[] = EFIMIRAGE_BACKDOOR_VARIABLE_NAME;
 static UINTN ExpectedAttributes = 0x1234;
 
 typedef enum { Return, ExitBoot, NestedReturn, NestedExit, UnloadInFlight } ACTION;
@@ -212,8 +212,8 @@ static EFI_STATUS EFIAPI MockInstallMultiple(EFI_HANDLE* Handle, ...)
 static EFI_STATUS EFIAPI MockInstall(EFI_HANDLE* Handle, EFI_GUID* Protocol,
 	EFI_INTERFACE_TYPE Type, VOID* Interface)
 {
-	CHECK(*Handle == gImageHandle && Protocol == &gEfiGuardDriverProtocolGuid);
-	CHECK(Type == EFI_NATIVE_INTERFACE && Interface == &gEfiGuardDriverProtocol);
+	CHECK(*Handle == gImageHandle && Protocol == &gEfiMirageDriverProtocolGuid);
+	CHECK(Type == EFI_NATIVE_INTERFACE && Interface == &gEfiMirageDriverProtocol);
 	return EFI_SUCCESS;
 }
 static EFI_STATUS EFIAPI MockUninstall(EFI_HANDLE Handle, ...)
@@ -264,7 +264,7 @@ static EFI_STATUS EFIAPI MockConvertPointer(UINTN Disposition, VOID** Address)
 static EFI_STATUS EFIAPI MockSetVariable(CHAR16* Name, EFI_GUID* Guid, UINT32 Attributes,
 	UINTN Size, VOID* Data)
 {
-	CHECK(Name == ProbeName && Guid == EFIGUARD_BACKDOOR_VARIABLE_GUID);
+	CHECK(Name == ProbeName && Guid == EFIMIRAGE_BACKDOOR_VARIABLE_GUID);
 	CHECK(Attributes == ExpectedAttributes && Size == 0 && Data == NULL);
 	++SetVariableCalls;
 	return EFI_WRITE_PROTECTED;
@@ -277,7 +277,7 @@ static void Probe(BOOLEAN Eligible)
 	UINTN Calls = SetVariableCalls;
 	gEfiAtRuntime = gEfiGoneVirtual = TRUE;
 	EFI_STATUS Status = RuntimeServices.SetVariable(ProbeName,
-		EFIGUARD_BACKDOOR_VARIABLE_GUID, ExpectedAttributes, 0, NULL);
+		EFIMIRAGE_BACKDOOR_VARIABLE_GUID, ExpectedAttributes, 0, NULL);
 	CHECK(Status == (Eligible ? EFI_SUCCESS : EFI_WRITE_PROTECTED));
 	CHECK(SetVariableCalls == Calls + (Eligible ? 0 : 1));
 	gEfiAtRuntime = Runtime;
@@ -315,11 +315,11 @@ static EFI_STATUS EFIAPI MockStart(EFI_HANDLE Handle, UINTN* Size, CHAR16** Data
 	if (Image->Action == UnloadInFlight)
 	{
 		CHECK(gBootmgfwHandle == NULL);
-		CHECK(EfiGuardUnload(gImageHandle) == EFI_ACCESS_DENIED);
+		CHECK(EfiMirageUnload(gImageHandle) == EFI_ACCESS_DENIED);
 		CHECK(Uninstalls == 0 && !ExitEvent.Closed && !VirtualEvent.Closed);
 		CHECK(BootServices.StartImage == HookedStartImage && RuntimeServices.SetVariable == HookedSetVariable);
 		CHECK(SecureBootInstalled);
-		EFIGUARD_CONFIGURATION_DATA Config = gDriverConfig;
+		EFIMIRAGE_CONFIGURATION_DATA Config = gDriverConfig;
 		Config.WaitForKeyPress = TRUE;
 		CHECK(DriverConfigure(&Config) == EFI_SUCCESS);
 		CHECK(gDriverConfig.WaitForKeyPress);
@@ -350,7 +350,7 @@ static void LoadWindows(void)
 	Probe(FALSE);
 }
 
-static void Initialize(EFIGUARD_DSE_BYPASS_TYPE Mode, BOOLEAN Fake)
+static void Initialize(EFIMIRAGE_DSE_BYPASS_TYPE Mode, BOOLEAN Fake)
 {
 	Windows.Type = BootmgfwEfi;
 	Other.Type = Unknown;
@@ -380,17 +380,17 @@ static void Initialize(EFIGUARD_DSE_BYPASS_TYPE Mode, BOOLEAN Fake)
 	SystemTable.ConOut = &Console;
 	Console.SetAttribute = MockAttribute;
 	Console.EnableCursor = MockCursor;
-	EFI_STATUS Status = EfiGuardInitialize(gImageHandle, &SystemTable);
+	EFI_STATUS Status = EfiMirageInitialize(gImageHandle, &SystemTable);
 	CHECK(Status == (FailVirtualEvent ? EFI_OUT_OF_RESOURCES : EFI_SUCCESS));
 	if (FailVirtualEvent)
 		return;
 	CHECK(BootServices.LoadImage == HookedLoadImage && BootServices.StartImage == HookedStartImage);
 	CHECK(RuntimeServices.SetVariable == HookedSetVariable && SecureBootInstalled);
 	CHECK(ExitEvent.Notify == ExitBootServicesEvent && VirtualEvent.Notify == SetVirtualAddressMapEvent);
-	EFIGUARD_CONFIGURATION_DATA Config = gDriverConfig;
+	EFIMIRAGE_CONFIGURATION_DATA Config = gDriverConfig;
 	Config.DseBypassMethod = Mode;
 	Config.FakeSecureBoot = Fake;
-	CHECK(gEfiGuardDriverProtocol.Configure(&Config) == EFI_SUCCESS);
+	CHECK(gEfiMirageDriverProtocol.Configure(&Config) == EFI_SUCCESS);
 }
 
 static void CheckUnloaded(void)
@@ -432,7 +432,7 @@ int main(int argc, char** argv)
 	if (argc != 4)
 		return 2;
 	const char* Case = argv[1];
-	EFIGUARD_DSE_BYPASS_TYPE Mode = (EFIGUARD_DSE_BYPASS_TYPE)atoi(argv[2]);
+	EFIMIRAGE_DSE_BYPASS_TYPE Mode = (EFIMIRAGE_DSE_BYPASS_TYPE)atoi(argv[2]);
 	BOOLEAN Fake = atoi(argv[3]) != 0;
 	FailVirtualEvent = strcmp(Case, "initialize-failure") == 0;
 	Initialize(Mode, Fake);
@@ -450,7 +450,7 @@ int main(int argc, char** argv)
 			CHECK(BootServices.StartImage(&Other, &Size, NULL) == Other.StartStatus);
 			CHECK(Size == sizeof(ExitMessage));
 		}
-		CHECK(EfiGuardUnload(gImageHandle) == EFI_SUCCESS);
+		CHECK(EfiMirageUnload(gImageHandle) == EFI_SUCCESS);
 		CheckUnloaded();
 	}
 	else

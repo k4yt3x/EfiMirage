@@ -29,7 +29,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="EfiGuardDxe.c">
+    <ClCompile Include="EfiMirageDxe.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="pe.c">
@@ -113,7 +113,7 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="EfiGuardDxe.h">
+    <ClInclude Include="EfiMirageDxe.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="pe.h">
@@ -125,7 +125,7 @@
     <ClInclude Include="util.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\Include\Protocol\EfiGuard.h">
+    <ClInclude Include="..\Include\Protocol\EfiMirage.h">
       <Filter>Header Files\Protocol</Filter>
     </ClInclude>
     <ClInclude Include="ntdef.h">

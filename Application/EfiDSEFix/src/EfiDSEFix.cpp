@@ -3,7 +3,7 @@
 #include "hde/hde64.h"
 #include <ntstatus.h>
 
-#include <Protocol/EfiGuard.h>
+#include <Protocol/EfiMirage.h>
 
 EFI_GUID gEfiGlobalVariableGuid = EFI_GLOBAL_VARIABLE;
 
@@ -303,7 +303,7 @@ TestSetVariableHook(
 	{
 		Printf(L"Error: VBS (Virtualization Based Security) is enabled and running on this system.\n"
 			"Attempting to read or write to or from kernel space using EFI runtime services will result in a bugcheck.\n"
-			"Either the EfiGuard DXE driver is not loaded, or it failed to disable VBS during boot.\n"
+			"Either the EfiMirage DXE driver is not loaded, or it failed to disable VBS during boot.\n"
 			"Not continuing.\n");
 		return STATUS_NOT_SUPPORTED;
 	}
@@ -315,21 +315,21 @@ TestSetVariableHook(
 		return Status;
 
 	// Set up the struct for a backdoor kernel mode read. See WriteToCiOptions for explanations
-	EFIGUARD_BACKDOOR_DATA BackdoorData;
+	EFIMIRAGE_BACKDOOR_DATA BackdoorData;
 	RtlZeroMemory(&BackdoorData, sizeof(BackdoorData));
-	BackdoorData.CookieValue = EFIGUARD_BACKDOOR_COOKIE_VALUE;
+	BackdoorData.CookieValue = EFIMIRAGE_BACKDOOR_COOKIE_VALUE;
 	BackdoorData.KernelAddress = reinterpret_cast<PVOID>(HalBase);
 	BackdoorData.u.Qword = UINT64_MAX; // Bogus value to verify write-back after the read operation
 	BackdoorData.Size = sizeof(UINT16);
 	BackdoorData.ReadOnly = TRUE;
 
 	// Call SetVariable()
-	UNICODE_STRING VariableName = RTL_CONSTANT_STRING(EFIGUARD_BACKDOOR_VARIABLE_NAME);
+	UNICODE_STRING VariableName = RTL_CONSTANT_STRING(EFIMIRAGE_BACKDOOR_VARIABLE_NAME);
 	Status = NtSetSystemEnvironmentValueEx(&VariableName,
-											EFIGUARD_BACKDOOR_VARIABLE_GUID,
+											EFIMIRAGE_BACKDOOR_VARIABLE_GUID,
 											&BackdoorData,
-											EFIGUARD_BACKDOOR_VARIABLE_DATASIZE,
-											EFIGUARD_BACKDOOR_VARIABLE_ATTRIBUTES);
+											EFIMIRAGE_BACKDOOR_VARIABLE_DATASIZE,
+											EFIMIRAGE_BACKDOOR_VARIABLE_ATTRIBUTES);
 	if (!NT_SUCCESS(Status))
 	{
 		Printf(L"Failure: NtSetSystemEnvironmentValueEx error 0x%08lX\n", Status);
@@ -340,16 +340,16 @@ TestSetVariableHook(
 
 		// Clean up, since we actually wrote a variable to NVRAM here...
 		NtSetSystemEnvironmentValueEx(&VariableName,
-									EFIGUARD_BACKDOOR_VARIABLE_GUID,
+									EFIMIRAGE_BACKDOOR_VARIABLE_GUID,
 									nullptr,
 									0,
-									EFIGUARD_BACKDOOR_VARIABLE_ATTRIBUTES);
+									EFIMIRAGE_BACKDOOR_VARIABLE_ATTRIBUTES);
 		Status = STATUS_NO_SUCH_DEVICE;
 	}
 
 	if (!NT_SUCCESS(Status))
 	{
-		Printf(L"The EfiGuard DXE driver is either not loaded in SETVARIABLE_HOOK mode, or it is malfunctioning.\n");
+		Printf(L"The EfiMirage DXE driver is either not loaded in SETVARIABLE_HOOK mode, or it is malfunctioning.\n");
 		return Status;
 	}
 
@@ -388,9 +388,9 @@ WriteToCiOptions(
 		: sizeof(UINT8);
 
 	// Set up the struct for a backdoor kernel mode R/W
-	EFIGUARD_BACKDOOR_DATA BackdoorData;
+	EFIMIRAGE_BACKDOOR_DATA BackdoorData;
 	RtlZeroMemory(&BackdoorData, sizeof(BackdoorData));
-	BackdoorData.CookieValue = EFIGUARD_BACKDOOR_COOKIE_VALUE;	// Authentication cookie
+	BackdoorData.CookieValue = EFIMIRAGE_BACKDOOR_COOKIE_VALUE;	// Authentication cookie
 	BackdoorData.KernelAddress = CiVariableAddress;				// Address to write to
 	if (CiPatchSize == sizeof(UINT32))							// Set the appropriate field to our desired value (e.g. 0 to disable DSE)
 		BackdoorData.u.s.Dword = static_cast<UINT32>(CiOptionsValue);
@@ -401,12 +401,12 @@ WriteToCiOptions(
 
 	// Call NtSetSystemEnvironmentValueEx -> [...] -> hal!HalSetEnvironmentVariableEx -> hal!HalEfiSetEnvironmentVariable -> EfiRT->SetVariable.
 	// On Windows >= 8 it is possible to use SetFirmwareEnvironmentVariableExW. We use the syscall directly because it exists on Windows 7 and Vista.
-	UNICODE_STRING VariableName = RTL_CONSTANT_STRING(EFIGUARD_BACKDOOR_VARIABLE_NAME);
+	UNICODE_STRING VariableName = RTL_CONSTANT_STRING(EFIMIRAGE_BACKDOOR_VARIABLE_NAME);
 	Status = NtSetSystemEnvironmentValueEx(&VariableName,
-											EFIGUARD_BACKDOOR_VARIABLE_GUID,
+											EFIMIRAGE_BACKDOOR_VARIABLE_GUID,
 											&BackdoorData,
-											EFIGUARD_BACKDOOR_VARIABLE_DATASIZE,
-											EFIGUARD_BACKDOOR_VARIABLE_ATTRIBUTES);
+											EFIMIRAGE_BACKDOOR_VARIABLE_DATASIZE,
+											EFIMIRAGE_BACKDOOR_VARIABLE_ATTRIBUTES);
 	if (!NT_SUCCESS(Status))
 	{
 		Printf(L"NtSetSystemEnvironmentValueEx: error 0x%08lX\n", Status);

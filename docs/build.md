@@ -1,4 +1,7 @@
-# Build and development guide
+# EfiMirage build and development guide
+
+For existing deployments, follow [Migrating from EfiGuard](../README.md#migrating-from-efiguard)
+before replacing the driver or configuration file.
 
 ## Quick start
 
@@ -46,8 +49,8 @@ they do not write global Git configuration or disable ownership checks for other
   `noopt`; dispatch on a tag always builds `release`. Checks and native regression tests must
   pass before the bundle is uploaded.
 
-Download `efiguard-x64-<profile>` from the **CD run's Artifacts** section. Its ZIP contains
-`EfiGuardDxe.efi`, `Loader.efi`, `EfiDSEFix.exe`, and `SHA256SUMS` at the archive root. Retention
+Download `efimirage-x64-<profile>` from the **CD run's Artifacts** section. Its ZIP contains
+`EfiMirageDxe.efi`, `Loader.efi`, `EfiDSEFix.exe`, and `SHA256SUMS` at the archive root. Retention
 uses the repository's artifact-retention setting. Component build logs are uploaded by both
 workflows, including after build failures, and retained for 14 days when available.
 
@@ -57,16 +60,32 @@ persist checkout credentials. No extra repository secrets are required. OVMF emu
 live Windows tests remain separate from these workflows; use `just test-emulation` locally
 for the firmware suites.
 
+### Preparing a release
+
+1. Set the release version in `EfiMiragePkg.dec`, `EfiMiragePkg.dsc`, and the four project
+   `.inf` files. Update both numeric and string versions in
+   `Application/EfiDSEFix/src/resource.rc`; Windows numeric versions use four components.
+   Do not change UEFI specification, configuration-protocol, or dependency versions.
+2. Move the changelog entries into a dated version section and leave an empty `[Unreleased]`
+   section above it. Keep each entry on one line of at most 100 characters.
+3. Run `just build release`, `just verify release`, and `just test-emulation release`.
+4. Commit the release changes, then create an annotated tag matching the changelog version
+   (for example, `git tag -a 2.0.0 -m "Release 2.0.0"`). Push the commit and that tag to run CD.
+5. After CD succeeds, download its verified bundle. To publish a GitHub Release, create one
+   for the same tag, use that version's changelog section as the notes, and attach the bundle.
+   Name a local archive of the 2.0.0 bundle `efimirage-x64-2.0.0.zip`; this does not rename
+   the profile-based Actions artifact.
+
 ## Workspace layout
 
 ```text
 Application/             upstream Loader and EfiDSEFix sources
   SecureBootTest/        OVMF boot-services self-test for the emulation
   SecureBootRuntimeTest/ OVMF post-SetVirtualAddressMap self-test
-EfiGuardDxe/             upstream runtime driver and Zydis submodule
+EfiMirageDxe/            upstream runtime driver and Zydis submodule
 Include/                 shared driver/loader/client interfaces
-EfiGuardPkg.{dsc,dec}     EDK2 package definitions
-EfiGuard.sln, *.props     native Visual Studio build definitions
+EfiMiragePkg.{dsc,dec}   EDK2 package definitions
+EfiMirage.{sln,props}    native Visual Studio build definitions
 justfile                 supported task entry points
 scripts/                 build orchestration and artifact verification
   test/                  pipeline regression tests, OVMF harness, Windows smoke test
@@ -76,7 +95,7 @@ docs/                    this guide and the Secure Boot emulation guide
 deps/                    ignored: pinned EDK2 checkout, Python venv, task lock
 out/                     ignored: intermediate and component build products
   edk2-ws/               EDK2 Conf/ state and Build/ tree
-  packages/EfiGuardPkg    generated symlink to the repository root
+  packages/EfiMiragePkg  generated symlink to the repository root
   efi/<profile>/         EFI images, .debug symbols, .map files
   windows/<profile>/     console/ and native/ outputs, each with its own obj/
   logs/                  complete component build output
@@ -132,7 +151,7 @@ profile uses the debug compiler flags in a separate output directory.
 Every published bundle contains exactly:
 
 ```text
-EfiGuardDxe.efi
+EfiMirageDxe.efi
 Loader.efi
 EfiDSEFix.exe
 SHA256SUMS
@@ -168,7 +187,7 @@ is reused, Python requirements are installed when their input hash changes,
 and BaseTools uses incremental make. Host tools and EDK2's ranged Python
 requirements are **not** a fully locked or bit-for-bit reproducible toolchain.
 
-EDK2 resolves `EfiGuardPkg/...` through `out/packages/EfiGuardPkg`; its private
+EDK2 resolves `EfiMiragePkg/...` through `out/packages/EfiMiragePkg`; its private
 workspace keeps generated Conf/ and Build/ files out of the dependency checkout.
 The added `SafeIntLib` mapping is needed by the loader's current library chain.
 EDK2's optional PDB-copy make rules ignore missing PDB files themselves; there

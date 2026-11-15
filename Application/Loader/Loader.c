@@ -1,7 +1,7 @@
 #include <Uefi.h>
 #include <Pi/PiDxeCis.h>
 
-#include <Protocol/EfiGuard.h>
+#include <Protocol/EfiMirage.h>
 #include <Protocol/SimpleFileSystem.h>
 #include <Protocol/LoadedImage.h>
 #include <Protocol/LegacyBios.h>
@@ -20,13 +20,13 @@
 //
 // Paths to the driver to try
 //
-#define EFIGUARD_DRIVER_FILENAME		L"EfiGuardDxe.efi"
-#define EFIGUARD_CONFIG_FILENAME		L"\\EFI\\EfiGuard\\EfiGuard.cfg"
-#define EFIGUARD_CONFIG_MAX_BYTES		4096
+#define EFIMIRAGE_DRIVER_FILENAME		L"EfiMirageDxe.efi"
+#define EFIMIRAGE_CONFIG_FILENAME		L"\\EFI\\EfiMirage\\EfiMirage.cfg"
+#define EFIMIRAGE_CONFIG_MAX_BYTES		4096
 STATIC CHAR16* mDriverPaths[] = {
-	L"\\EFI\\Boot\\" EFIGUARD_DRIVER_FILENAME,
-	L"\\EFI\\" EFIGUARD_DRIVER_FILENAME,
-	L"\\" EFIGUARD_DRIVER_FILENAME
+	L"\\EFI\\Boot\\" EFIMIRAGE_DRIVER_FILENAME,
+	L"\\EFI\\" EFIMIRAGE_DRIVER_FILENAME,
+	L"\\" EFIMIRAGE_DRIVER_FILENAME
 };
 
 STATIC EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL *mTextInputEx = NULL;
@@ -609,7 +609,7 @@ TouchMarkerFile(
 }
 
 //
-// Applies \EFI\EfiGuard\EfiGuard.cfg, if present, over the defaults in ConfigData.
+// Applies \EFI\EfiMirage\EfiMirage.cfg, if present, over the defaults in ConfigData.
 //
 // Accepted encodings are ASCII, UTF-8 with a BOM (bytes above 0x7F are replaced rather than
 // aborting the parse) and UTF-16LE with or without a BOM. Keys are case-insensitive and matched
@@ -622,16 +622,16 @@ STATIC
 BOOLEAN
 EFIAPI
 LoadConfigurationFile(
-	IN OUT EFIGUARD_CONFIGURATION_DATA* ConfigData
+	IN OUT EFIMIRAGE_CONFIGURATION_DATA* ConfigData
 	)
 {
 	EFI_FILE_HANDLE File = NULL;
 	EFI_FILE_HANDLE Volume = NULL;
-	if (EFI_ERROR(OpenFileAnywhere(EFIGUARD_CONFIG_FILENAME, &File, &Volume)))
+	if (EFI_ERROR(OpenFileAnywhere(EFIMIRAGE_CONFIG_FILENAME, &File, &Volume)))
 		return FALSE;
 
-	UINT8* Raw = AllocateZeroPool(EFIGUARD_CONFIG_MAX_BYTES + sizeof(CHAR16));
-	CHAR16* Buffer = AllocateZeroPool((EFIGUARD_CONFIG_MAX_BYTES + 1) * sizeof(CHAR16));
+	UINT8* Raw = AllocateZeroPool(EFIMIRAGE_CONFIG_MAX_BYTES + sizeof(CHAR16));
+	CHAR16* Buffer = AllocateZeroPool((EFIMIRAGE_CONFIG_MAX_BYTES + 1) * sizeof(CHAR16));
 	if (Raw == NULL || Buffer == NULL)
 	{
 		File->Close(File);
@@ -644,17 +644,17 @@ LoadConfigurationFile(
 	}
 
 	// One extra byte distinguishes an exact-limit file from a silently truncated prefix.
-	UINTN RawSize = EFIGUARD_CONFIG_MAX_BYTES + 1;
+	UINTN RawSize = EFIMIRAGE_CONFIG_MAX_BYTES + 1;
 	CONST EFI_STATUS Status = File->Read(File, &RawSize, Raw);
 	File->Close(File);
 	Volume->Close(Volume);
-	if (EFI_ERROR(Status) || RawSize > EFIGUARD_CONFIG_MAX_BYTES)
+	if (EFI_ERROR(Status) || RawSize > EFIMIRAGE_CONFIG_MAX_BYTES)
 	{
 		if (EFI_ERROR(Status))
-			Print(L"[LOADER] Cannot read configuration %s: %r; ignored.\r\n", EFIGUARD_CONFIG_FILENAME, Status);
+			Print(L"[LOADER] Cannot read configuration %s: %r; ignored.\r\n", EFIMIRAGE_CONFIG_FILENAME, Status);
 		else
 			Print(L"[LOADER] Configuration %s exceeds %u bytes; reduce its size. File ignored.\r\n",
-				EFIGUARD_CONFIG_FILENAME, (UINTN)EFIGUARD_CONFIG_MAX_BYTES);
+				EFIMIRAGE_CONFIG_FILENAME, (UINTN)EFIMIRAGE_CONFIG_MAX_BYTES);
 		FreePool(Raw);
 		FreePool(Buffer);
 		return FALSE;
@@ -685,7 +685,7 @@ LoadConfigurationFile(
 	Buffer[Length] = L'\0';
 	FreePool(Raw);
 
-	Print(L"[LOADER] Applying configuration from %s.\r\n", EFIGUARD_CONFIG_FILENAME);
+	Print(L"[LOADER] Applying configuration from %s.\r\n", EFIMIRAGE_CONFIG_FILENAME);
 
 	CHAR16* Line = Buffer;
 	while (*Line != L'\0')
@@ -793,23 +793,23 @@ SetHighestAvailableTextMode(
 STATIC
 EFI_STATUS
 EFIAPI
-StartEfiGuard(
+StartEfiMirage(
 	IN BOOLEAN InteractiveConfiguration
 	)
 {
-	EFIGUARD_DRIVER_PROTOCOL* EfiGuardDriverProtocol;
+	EFIMIRAGE_DRIVER_PROTOCOL* EfiMirageDriverProtocol;
 	EFI_DEVICE_PATH *DriverDevicePath = NULL;
 
 	// 
 	// Check if the driver is loaded 
 	// 
-	EFI_STATUS Status = gBS->LocateProtocol(&gEfiGuardDriverProtocolGuid,
+	EFI_STATUS Status = gBS->LocateProtocol(&gEfiMirageDriverProtocolGuid,
 											NULL,
-											(VOID**)&EfiGuardDriverProtocol);
+											(VOID**)&EfiMirageDriverProtocol);
 	ASSERT((!EFI_ERROR(Status) || Status == EFI_NOT_FOUND));
 	if (Status == EFI_NOT_FOUND)
 	{
-		Print(L"[LOADER] Locating and loading driver file %S...\r\n", EFIGUARD_DRIVER_FILENAME);
+		Print(L"[LOADER] Locating and loading driver file %S...\r\n", EFIMIRAGE_DRIVER_FILENAME);
 		for (UINT32 i = 0; i < ARRAY_SIZE(mDriverPaths); ++i)
 		{
 			Status = LocateFile(mDriverPaths[i], &DriverDevicePath);
@@ -818,7 +818,7 @@ StartEfiGuard(
 		}
 		if (EFI_ERROR(Status))
 		{
-			Print(L"[LOADER] Failed to find driver file %S.\r\n", EFIGUARD_DRIVER_FILENAME);
+			Print(L"[LOADER] Failed to find driver file %S.\r\n", EFIMIRAGE_DRIVER_FILENAME);
 			goto Exit;
 		}
 
@@ -848,9 +848,9 @@ StartEfiGuard(
 		Print(L"[LOADER] The driver is already loaded.\r\n");
 	}
 
-	Status = gBS->LocateProtocol(&gEfiGuardDriverProtocolGuid,
+	Status = gBS->LocateProtocol(&gEfiMirageDriverProtocolGuid,
 								NULL,
-								(VOID**)&EfiGuardDriverProtocol);
+								(VOID**)&EfiMirageDriverProtocol);
 	if (EFI_ERROR(Status))
 	{
 		Print(L"[LOADER] LocateProtocol failed: %llx (%r).\r\n", Status, Status);
@@ -861,8 +861,8 @@ StartEfiGuard(
 	// Driver configuration: start from the defaults or the configuration file, then let HOME
 	// override either.
 	//
-	EFIGUARD_CONFIGURATION_DATA ConfigData = {
-		EFIGUARD_CONFIGURATION_DATA_VERSION,
+	EFIMIRAGE_CONFIGURATION_DATA ConfigData = {
+		EFIMIRAGE_CONFIGURATION_DATA_VERSION,
 		DSE_DISABLE_SETVARIABLE_HOOK,
 		FALSE,
 		TRUE,
@@ -923,7 +923,7 @@ StartEfiGuard(
 		//
 		// Send the configuration data to the driver
 		//
-		Status = EfiGuardDriverProtocol->Configure(&ConfigData);
+		Status = EfiMirageDriverProtocol->Configure(&ConfigData);
 
 		if (EFI_ERROR(Status))
 			Print(L"[LOADER] Driver Configure() returned error %llx (%r).\r\n", Status, Status);
@@ -1069,8 +1069,8 @@ TryBootOptionsInOrder(
 		// Handle BBS entries
 		if (IsLegacy)
 		{
-			Print(L"\r\nNOTE: EfiGuard does not support legacy (non-UEFI) Windows installations.\r\n"
-				L"The legacy OS will be booted, but EfiGuard will not work.\r\nPress any key to acknowledge...\r\n");
+			Print(L"\r\nNOTE: EfiMirage does not support legacy (non-UEFI) Windows installations.\r\n"
+				L"The legacy OS will be booted, but EfiMirage will not work.\r\nPress any key to acknowledge...\r\n");
 			WaitForKey();
 
 			EFI_LEGACY_BIOS_PROTOCOL *LegacyBios;
@@ -1202,13 +1202,13 @@ UefiMain(
 	//
 	// Allow user to configure the driver by pressing a hotkey
 	//
-	Print(L"Press <HOME> to configure EfiGuard (overrides %s)...\r\n", EFIGUARD_CONFIG_FILENAME);
+	Print(L"Press <HOME> to configure EfiMirage (overrides %s)...\r\n", EFIMIRAGE_CONFIG_FILENAME);
 	CONST BOOLEAN InteractiveConfiguration = WaitForKeyWithTimeout(1500) == SCAN_HOME;
 
 	//
 	// Locate, load, start and configure the driver
 	//
-	CONST EFI_STATUS DriverStatus = StartEfiGuard(InteractiveConfiguration);
+	CONST EFI_STATUS DriverStatus = StartEfiMirage(InteractiveConfiguration);
 	if (EFI_ERROR(DriverStatus))
 	{
 		Print(L"\r\nERROR: driver load failed with status %llx (%r).\r\n"

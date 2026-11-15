@@ -1,4 +1,5 @@
+# Keep the logical submodule name stable for existing initialized checkouts.
 [submodule "EfiGuardDxe/Zydis"]
-	path = EfiGuardDxe/Zydis
+	path = EfiMirageDxe/Zydis
 	url = https://github.com/zyantific/zydis.git
 	branch = master

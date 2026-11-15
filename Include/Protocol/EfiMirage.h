@@ -1,5 +1,5 @@
-#ifndef __EFIGUARD_GUID_H__
-#define __EFIGUARD_GUID_H__
+#ifndef __EFIMIRAGE_GUID_H__
+#define __EFIMIRAGE_GUID_H__
 
 #include <Guid/GlobalVariable.h>
 
@@ -8,9 +8,9 @@ extern "C" {
 #endif
 
 //
-// EfiGuard Bootkit Protocol GUID
+// EfiMirage Bootkit Protocol GUID
 //
-#define EFI_EFIGUARD_DRIVER_PROTOCOL_GUID \
+#define EFI_EFIMIRAGE_DRIVER_PROTOCOL_GUID \
 	{ \
 	0x51e4785b, 0xb1e4, 0x4fda, { 0xaf, 0x5f, 0x94, 0x2e, 0xc0, 0x15, 0xf1, 0x7 } \
 	}
@@ -18,7 +18,7 @@ extern "C" {
 //
 // Type of Driver Signature Enforcement bypass to use
 //
-typedef enum _EFIGUARD_DSE_BYPASS_TYPE {
+typedef enum _EFIMIRAGE_DSE_BYPASS_TYPE {
 	//
 	// Do not disable DSE.
 	//
@@ -41,7 +41,7 @@ typedef enum _EFIGUARD_DSE_BYPASS_TYPE {
 	// This is the default DSE bypass setting.
 	//
 	DSE_DISABLE_SETVARIABLE_HOOK = 2
-} EFIGUARD_DSE_BYPASS_TYPE;
+} EFIMIRAGE_DSE_BYPASS_TYPE;
 
 
 //
@@ -59,16 +59,17 @@ typedef enum _EFIGUARD_DSE_BYPASS_TYPE {
 // (1) one of the Byte through Qword fields (depending on size) will contain the value at KernelAddress, or
 // (2) the memcpy performed will be in the opposite direction, i.e. from KernelAddress to UserBuffer.
 //
-#define EFIGUARD_BACKDOOR_VARIABLE_NAME						L"roodkcaBdrauGifE" // "EfiGuardBackdoor" // TODO: randomize?
-#define EFIGUARD_BACKDOOR_VARIABLE_GUID						&gEfiGlobalVariableGuid
-#define EFIGUARD_BACKDOOR_VARIABLE_ATTRIBUTES				(EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS)
-#define EFIGUARD_BACKDOOR_VARIABLE_DATASIZE					sizeof(EFIGUARD_BACKDOOR_DATA)
+// Keep the legacy wire name so existing EfiGuard clients still address the same interface.
+#define EFIMIRAGE_BACKDOOR_VARIABLE_NAME						L"roodkcaBdrauGifE"
+#define EFIMIRAGE_BACKDOOR_VARIABLE_GUID						&gEfiGlobalVariableGuid
+#define EFIMIRAGE_BACKDOOR_VARIABLE_ATTRIBUTES				(EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS)
+#define EFIMIRAGE_BACKDOOR_VARIABLE_DATASIZE					sizeof(EFIMIRAGE_BACKDOOR_DATA)
 
-#define EFIGUARD_BACKDOOR_COOKIE_VALUE						(0xDEADC0DE)
+#define EFIMIRAGE_BACKDOOR_COOKIE_VALUE						(0xDEADC0DE)
 
-typedef struct _EFIGUARD_BACKDOOR_DATA {
+typedef struct _EFIMIRAGE_BACKDOOR_DATA {
 
-	UINTN CookieValue; // Currently must be EFIGUARD_BACKDOOR_COOKIE_VALUE
+	UINTN CookieValue; // Currently must be EFIMIRAGE_BACKDOOR_COOKIE_VALUE
 	VOID* KernelAddress;
 
 	union {
@@ -85,21 +86,21 @@ typedef struct _EFIGUARD_BACKDOOR_DATA {
 
 	UINT32 Size;
 	BOOLEAN ReadOnly;
-} EFIGUARD_BACKDOOR_DATA;
+} EFIMIRAGE_BACKDOOR_DATA;
 
 
 //
 // Configuration data version. Must equal the value below or Configure() is refused.
 //
-#define EFIGUARD_CONFIGURATION_DATA_VERSION 1
+#define EFIMIRAGE_CONFIGURATION_DATA_VERSION 1
 
 
 //
 // Main driver configuration data. This can be optionally sent to the driver using the Configure() pointer in the protocol.
 //
-typedef struct _EFIGUARD_CONFIGURATION_DATA {
+typedef struct _EFIMIRAGE_CONFIGURATION_DATA {
 	//
-	// Must be EFIGUARD_CONFIGURATION_DATA_VERSION.
+	// Must be EFIMIRAGE_CONFIGURATION_DATA_VERSION.
 	//
 	// First on purpose: a caller built against an older, shorter struct reads its own bytes
 	// here rather than reading past its buffer, and a zero-initialized struct is refused.
@@ -110,7 +111,7 @@ typedef struct _EFIGUARD_CONFIGURATION_DATA {
 	// Type of Driver Signature Enforcement bypass to use.
 	// Default: DSE_DISABLE_SETVARIABLE_HOOK
 	//
-	EFIGUARD_DSE_BYPASS_TYPE DseBypassMethod;
+	EFIMIRAGE_DSE_BYPASS_TYPE DseBypassMethod;
 
 	//
 	// Whether to wait for a keypress at the end of each patch stage, regardless of success or failure.
@@ -129,7 +130,7 @@ typedef struct _EFIGUARD_CONFIGURATION_DATA {
 	BOOLEAN FakeSecureBoot;
 
 	UINT8 Reserved[2];
-} EFIGUARD_CONFIGURATION_DATA;
+} EFIMIRAGE_CONFIGURATION_DATA;
 
 
 //
@@ -138,20 +139,20 @@ typedef struct _EFIGUARD_CONFIGURATION_DATA {
 typedef
 EFI_STATUS
 (EFIAPI*
-EFIGUARD_CONFIGURE)(
-	IN CONST EFIGUARD_CONFIGURATION_DATA* ConfigurationData
+EFIMIRAGE_CONFIGURE)(
+	IN CONST EFIMIRAGE_CONFIGURATION_DATA* ConfigurationData
 	);
 
 
 //
-// The EfiGuard bootkit driver protocol.
+// The EfiMirage bootkit driver protocol.
 //
-typedef struct _EFIGUARD_DRIVER_PROTOCOL {
-	EFIGUARD_CONFIGURE Configure;
-} EFIGUARD_DRIVER_PROTOCOL;
+typedef struct _EFIMIRAGE_DRIVER_PROTOCOL {
+	EFIMIRAGE_CONFIGURE Configure;
+} EFIMIRAGE_DRIVER_PROTOCOL;
 
 
-extern EFI_GUID gEfiGuardDriverProtocolGuid;
+extern EFI_GUID gEfiMirageDriverProtocolGuid;
 
 #ifdef __cplusplus
 }

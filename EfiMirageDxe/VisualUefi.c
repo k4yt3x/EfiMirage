@@ -6,7 +6,7 @@
 #include <Uefi.h>
 #include <Protocol/DriverSupportedEfiVersion.h>
 #include <Protocol/SimpleTextInEx.h>
-#include <Protocol/EfiGuard.h>
+#include <Protocol/EfiMirage.h>
 #include <Guid/Acpi.h>
 #include <Library/DebugLib.h>
 
@@ -17,15 +17,15 @@
 CONST UINT8 _gDriverUnloadImageCount = 1;
 CONST UINT32 _gUefiDriverRevision = 0x210;
 CONST UINT32 _gDxeRevision = 0x210;
-CHAR8 *gEfiCallerBaseName = "EfiGuardDxe";
+CHAR8 *gEfiCallerBaseName = "EfiMirageDxe";
 BOOLEAN mPostEBS = FALSE;
 EFI_SYSTEM_TABLE *mDebugST = NULL;
 
 
 //
-// EfiGuard Bootkit Driver Protocol
+// EfiMirage Bootkit Driver Protocol
 //
-EFI_GUID gEfiGuardDriverProtocolGuid = EFI_EFIGUARD_DRIVER_PROTOCOL_GUID;
+EFI_GUID gEfiMirageDriverProtocolGuid = EFI_EFIMIRAGE_DRIVER_PROTOCOL_GUID;
 
 
 //
@@ -77,7 +77,7 @@ GetPerformanceCounterProperties(
 //
 EFI_STATUS
 EFIAPI
-EfiGuardInitialize(
+EfiMirageInitialize(
 	IN EFI_HANDLE ImageHandle,
 	IN EFI_SYSTEM_TABLE *SystemTable
 	);
@@ -89,12 +89,12 @@ UefiMain(
 	IN EFI_SYSTEM_TABLE *SystemTable
 	)
 {
-	return EfiGuardInitialize(ImageHandle, SystemTable);
+	return EfiMirageInitialize(ImageHandle, SystemTable);
 }
 
 EFI_STATUS
 EFIAPI
-EfiGuardUnload(
+EfiMirageUnload(
 	IN EFI_HANDLE ImageHandle
 	);
 
@@ -104,7 +104,7 @@ UefiUnload(
 	IN EFI_HANDLE ImageHandle
 	)
 {
-	return EfiGuardUnload(ImageHandle);
+	return EfiMirageUnload(ImageHandle);
 }
 
 #endif // VISUALUEFI

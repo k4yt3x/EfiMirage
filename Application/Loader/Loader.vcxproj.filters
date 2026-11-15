@@ -14,7 +14,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\Include\Protocol\EfiGuard.h">
+    <ClInclude Include="..\..\Include\Protocol\EfiMirage.h">
       <Filter>Header Files\Protocol</Filter>
     </ClInclude>
   </ItemGroup>

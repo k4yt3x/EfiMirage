@@ -2,7 +2,7 @@
 #
 # Verifies that the MinGW link produced a binary that actually loads and runs,
 # and that command dispatch and NTSTATUS propagation work. It probes -c first: with
-# no EfiGuard loaded every backdoor command must fail with STATUS_INVALID_PARAMETER
+# no EfiMirage loaded every backdoor command must fail with STATUS_INVALID_PARAMETER
 # (0xC000000D), and with a working driver they must succeed.
 #
 # ONLY VALID FOR THE CONSOLE BUILD (EfiDSEFix.exe). The native-subsystem build
@@ -59,7 +59,7 @@ $expected = [ordered]@{
     '-d' = 0xC000000D
     # Reads firmware variables and the registry only: 0 when every source agrees,
     # STATUS_UNSUCCESSFUL (0xC0000001) when they do not, which is legitimate on a
-    # machine without EfiGuard.
+    # machine without EfiMirage.
     '-s' = 0x00000000
 }
 

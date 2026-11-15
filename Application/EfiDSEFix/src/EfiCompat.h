@@ -1,7 +1,7 @@
 #pragma once
 
 // We can't include all of <Uefi/UefiBaseType.h> because MSVC will give some very angry errors, especially w.r.t. GUID types which come from the retarded guiddef.h.
-// Instead define the minimum subset required to include <Protocol/EfiGuard.h>
+// Instead define the minimum subset required to include <Protocol/EfiMirage.h>
 #define EFIAPI __cdecl
 
 typedef ULONG_PTR UINTN;

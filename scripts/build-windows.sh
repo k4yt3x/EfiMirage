@@ -32,7 +32,7 @@ set -- "$@" -fno-stack-protector -fno-asynchronous-unwind-tables \
     -I "$COMPAT" -I "$SRC" -I "$ROOT/Include" \
     -I "$EDK2_DIR/MdePkg/Include" -I "$EDK2_DIR/MdePkg/Include/X64" \
     -D_M_AMD64 -DWINVER=0x0600 -D_WIN32_WINNT=0x0600 -DNTDDI_VERSION=0x06000200 \
-    -include "$COMPAT/efiguard-mingw.h"
+    -include "$COMPAT/efimirage-mingw.h"
 for source in main EfiDSEFix pe sysinfo; do
     x86_64-w64-mingw32-g++ "$@" -std=c++20 -fno-exceptions -fno-rtti -fno-threadsafe-statics \
         -c "$SRC/$source.cpp" -o "$OBJ/$source.o"

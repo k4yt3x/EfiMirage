@@ -19,10 +19,10 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
 #include <Library/UefiLib.h>
-#include <Protocol/EfiGuard.h>
+#include <Protocol/EfiMirage.h>
 #include <Protocol/LoadedImage.h>
 
-#define DRIVER_PATH L"\\EFI\\BOOT\\EfiGuardDxe.efi"
+#define DRIVER_PATH L"\\EFI\\BOOT\\EfiMirageDxe.efi"
 
 STATIC UINTN mPassed = 0;
 STATIC UINTN mFailed = 0;
@@ -92,14 +92,14 @@ LoadDriver(
 STATIC
 VOID
 ConfigureDriver(
-	IN EFIGUARD_DRIVER_PROTOCOL* Protocol,
-	IN EFIGUARD_DSE_BYPASS_TYPE BypassMethod,
+	IN EFIMIRAGE_DRIVER_PROTOCOL* Protocol,
+	IN EFIMIRAGE_DSE_BYPASS_TYPE BypassMethod,
 	IN BOOLEAN FakeSecureBoot,
 	IN UINT32 Version,
 	OUT EFI_STATUS* Status
 	)
 {
-	EFIGUARD_CONFIGURATION_DATA ConfigData = {
+	EFIMIRAGE_CONFIGURATION_DATA ConfigData = {
 		Version,
 		BypassMethod,
 		FALSE,
@@ -139,8 +139,8 @@ UefiMain(
 	Print(L"Driver load status: %llx\r\n", (UINT64)Status);
 
 	// A retried boot starts an already loaded driver; that is not a failure here.
-	EFIGUARD_DRIVER_PROTOCOL* Protocol = NULL;
-	Status = gBS->LocateProtocol(&gEfiGuardDriverProtocolGuid, NULL, (VOID**)&Protocol);
+	EFIMIRAGE_DRIVER_PROTOCOL* Protocol = NULL;
+	Status = gBS->LocateProtocol(&gEfiMirageDriverProtocolGuid, NULL, (VOID**)&Protocol);
 	Check(!EFI_ERROR(Status) && Protocol != NULL, L"driver loaded and protocol located");
 	if (Protocol == NULL)
 		goto Done;
@@ -158,17 +158,17 @@ UefiMain(
 	// A version mismatch must be refused rather than misread
 	EFI_STATUS ConfigureStatus;
 	ConfigureDriver(Protocol, DSE_DISABLE_NONE, TRUE,
-		EFIGUARD_CONFIGURATION_DATA_VERSION + 1, &ConfigureStatus);
+		EFIMIRAGE_CONFIGURATION_DATA_VERSION + 1, &ConfigureStatus);
 	Check(ConfigureStatus == EFI_INCOMPATIBLE_VERSION, L"wrong configuration version is refused");
 
 	// An out-of-range DSE bypass method must be refused
-	ConfigureDriver(Protocol, (EFIGUARD_DSE_BYPASS_TYPE)99, TRUE,
-		EFIGUARD_CONFIGURATION_DATA_VERSION, &ConfigureStatus);
+	ConfigureDriver(Protocol, (EFIMIRAGE_DSE_BYPASS_TYPE)99, TRUE,
+		EFIMIRAGE_CONFIGURATION_DATA_VERSION, &ConfigureStatus);
 	Check(ConfigureStatus == EFI_INVALID_PARAMETER, L"out-of-range DSE bypass method is refused");
 
 	// Enable emulation
 	ConfigureDriver(Protocol, DSE_DISABLE_NONE, TRUE,
-		EFIGUARD_CONFIGURATION_DATA_VERSION, &ConfigureStatus);
+		EFIMIRAGE_CONFIGURATION_DATA_VERSION, &ConfigureStatus);
 	Check(ConfigureStatus == EFI_SUCCESS, L"configuration accepted");
 
 	// SecureBoot now reads as 1 with the attributes from the specification
@@ -232,7 +232,7 @@ UefiMain(
 
 	// Turning the feature back off restores the real values
 	ConfigureDriver(Protocol, DSE_DISABLE_NONE, FALSE,
-		EFIGUARD_CONFIGURATION_DATA_VERSION, &ConfigureStatus);
+		EFIMIRAGE_CONFIGURATION_DATA_VERSION, &ConfigureStatus);
 	Check(ConfigureStatus == EFI_SUCCESS, L"configuration with emulation off accepted");
 	Value = 0xFF;
 	Size = sizeof(Value);

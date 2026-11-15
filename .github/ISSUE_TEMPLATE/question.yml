@@ -1,5 +1,5 @@
 name: Question
-description: Questions about EfiGuard
+description: Questions about EfiMirage
 labels: ["question"]
 
 body:
@@ -7,7 +7,7 @@ body:
     id: description
     attributes:
       label: Question description
-      description: What is your question? Please make sure it is related to EfiGuard.
+      description: What is your question? Please make sure it is related to EfiMirage.
       placeholder: Ask your question here.
     validations:
       required: true
