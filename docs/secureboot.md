@@ -1,5 +1,7 @@
 # Secure Boot emulation
 
+[Project overview](../README.md) · [Installation and usage](usage.md) · [Build guide](build.md)
+
 EfiMirage can report Secure Boot as enabled to everything that asks, regardless of what
 the firmware is actually configured to do. The firmware's own behaviour is unchanged: it
 still validates whatever it validates, and unsigned EfiMirage images still have to be
@@ -51,7 +53,7 @@ from the values the file set, so a file never makes the prompt unreachable.
 
 When upgrading from EfiGuard, move `\EFI\EfiGuard\EfiGuard.cfg` to the new path without
 changing its keys or values. There is **no fallback** to the old path. See the full
-[migration steps](../README.md#migrating-from-efiguard), including driver-entry updates.
+[migration steps](usage.md#migrating-from-efiguard), including driver-entry updates.
 
 ```ini
 # EfiMirage.cfg; UTF-16LE or ASCII, case-insensitive keys, '#' starts a comment

@@ -22,7 +22,7 @@
 
 ### Changed
 
-- **Breaking:** New EfiMirage names and paths; [migrate](README.md#migrating-from-efiguard).
+- **Breaking:** New EfiMirage names and paths; [migrate](docs/usage.md#migrating-from-efiguard).
 
 ### Fixed
 

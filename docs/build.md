@@ -1,6 +1,8 @@
 # EfiMirage build and development guide
 
-For existing deployments, follow [Migrating from EfiGuard](../README.md#migrating-from-efiguard)
+[Project overview](../README.md) · [Installation and usage](usage.md)
+
+For existing deployments, follow [Migrating from EfiGuard](usage.md#migrating-from-efiguard)
 before replacing the driver or configuration file.
 
 ## Quick start
@@ -90,7 +92,7 @@ justfile                 supported task entry points
 scripts/                 build orchestration and artifact verification
   test/                  pipeline regression tests, OVMF harness, Windows smoke test
   compat/mingw/          Windows headers needed for Linux cross-compilation
-docs/                    this guide and the Secure Boot emulation guide
+docs/                    installation, build, architecture, and emulation guides
 
 deps/                    ignored: pinned EDK2 checkout, Python venv, task lock
 out/                     ignored: intermediate and component build products
@@ -201,6 +203,45 @@ existing source adjustments preserve the upstream Vista-targeted ABI.
 The optional native-subsystem executable uses `NtDisplayString` and cannot be
 launched as a normal Win32 process. It stays in
 `out/windows/<profile>/native/`, never in a published bundle.
+
+## Manual builds
+
+The Linux `just` workflow above is the standard build path. The manual EDK2 and
+Visual Studio workflows remain available for other environments.
+
+### EFI driver and loader
+
+EfiMirage requires EDK2 to build. If you don't have EDK2 installed, follow the steps in [Getting
+Started with
+EDK2](https://github.com/tianocore/tianocore.github.io/wiki/Getting-Started-with-EDK-II) first as
+the EDK2 build system is fairly complex to set up. This section assumes you have a `workspace`
+directory that your `WORKSPACE` environment variable points to, with a copy of EDK2 checked out in
+`workspace/edk2`. Supported compilers are MSVC, Clang, GCC and ICC.
+1. Clone the EfiMirage repository into `workspace/edk2/EfiMiragePkg`.
+2. Open a prompt or shell that sets up the environment variables for EDK2.
+3. Run `build -a X64 -t VS2019 -p EfiMiragePkg/EfiMiragePkg.dsc -b RELEASE`, substituting your
+   toolchain for VS2019.
+
+This will produce `EfiMirageDxe.efi` and `Loader.efi` in
+`workspace/Build/EfiMirage/RELEASE_VS2019/X64`.
+
+### Windows utility
+
+For a native Windows build, EfiDSEFix uses Visual Studio. The Linux workflow above
+cross-compiles it with MinGW-w64 instead.
+1. Open `EfiMirage.sln` and build the solution.
+
+The output binary `EfiDSEFix.exe` will be in `Application/EfiDSEFix/bin`.
+
+### VisualUefi projects
+
+The Visual Studio solution also includes projects for `EfiMirageDxe.efi` and `Loader.efi` which can
+be used with [VisualUefi](https://github.com/ionescu007/VisualUefi), but these projects are not
+built by default as they will not link without additional code, and the build output will be
+inferior (bigger) than what EDK2 produces. `Loader.efi` will not link at all due to VisualUefi
+missing UefiBootManagerLib. These project files are thus meant as a development aid only and the EFI
+files should still be compiled with EDK2. To set up VisualUefi for this purpose, clone the
+repository into `workspace/VisualUefi` and open `EfiMirage.sln`.
 
 ## Validation status
 
