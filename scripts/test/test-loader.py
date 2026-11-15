@@ -32,37 +32,25 @@ class LoaderTests(unittest.TestCase):
         if result.returncode:
             raise RuntimeError(f"Native loader build failed:\n{result.stdout}{result.stderr}")
 
-    def run_case(self, group, name):
-        result = subprocess.run([str(self.binary), group, name], cwd=self.work,
+    def run_case(self, name):
+        result = subprocess.run([str(self.binary), name], cwd=self.work,
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_configuration_encodings_and_exact_limit(self):
         for name in ("ascii", "utf8-bom", "utf16", "utf16-bom", "exact-limit", "utf16-exact-limit"):
             with self.subTest(name=name):
-                self.run_case("config", name)
+                self.run_case(name)
 
     def test_oversize_configuration_is_rejected_unchanged(self):
         for name in ("oversize-prefix", "oversize-crossing-value"):
             with self.subTest(name=name):
-                self.run_case("config", name)
+                self.run_case(name)
 
     def test_configuration_missing_and_read_error(self):
         for name in ("missing", "read-error"):
             with self.subTest(name=name):
-                self.run_case("config", name)
-
-    def test_marker_filesystem_paths(self):
-        for name in ("root", "root-relative", "single", "two", "three", "relative-directories",
-                     "trailing-directory", "absolute-reset", "absolute-root-reset"):
-            with self.subTest(name=name):
-                self.run_case("marker", name)
-
-    def test_marker_unavailable(self):
-        for name in ("missing", "empty", "unsupported", "unsupported-later", "multiple-instances",
-                     "unterminated", "short-node", "read-only"):
-            with self.subTest(name=name):
-                self.run_case("marker", name)
+                self.run_case(name)
 
 
 if __name__ == "__main__":

@@ -485,130 +485,6 @@ SplitConfigLine(
 }
 
 //
-// File path nodes are opened relative to the previous directory; a leading '\' resets to
-// the volume root. Device-path display text inserts '/' between nodes and is not a filename.
-//
-STATIC
-CHAR16*
-EFIAPI
-GetLoaderFilePath(
-	IN CONST EFI_DEVICE_PATH_PROTOCOL* DevicePath
-	)
-{
-	if (DevicePath == NULL)
-		return NULL;
-
-	UINTN Size = 0;
-	CONST EFI_DEVICE_PATH_PROTOCOL* Node = DevicePath;
-	for (; !IsDevicePathEnd(Node); Node = NextDevicePathNode(Node))
-	{
-		CONST UINTN NodeSize = DevicePathNodeLength(Node);
-		if (DevicePathType(Node) != MEDIA_DEVICE_PATH || DevicePathSubType(Node) != MEDIA_FILEPATH_DP ||
-			NodeSize < SIZE_OF_FILEPATH_DEVICE_PATH + sizeof(CHAR16) ||
-			(NodeSize - SIZE_OF_FILEPATH_DEVICE_PATH) % sizeof(CHAR16) != 0)
-			return NULL;
-
-		CONST UINT8* Bytes = (CONST UINT8*)Node;
-		if (Bytes[NodeSize - 2] != 0 || Bytes[NodeSize - 1] != 0 || Size > MAX_UINTN - NodeSize)
-			return NULL;
-		Size += NodeSize;
-	}
-	if (Size == 0 || DevicePathNodeLength(Node) != END_DEVICE_PATH_LENGTH)
-		return NULL;
-
-	// Each node's header leaves room for a separator, including the initial root separator.
-	CHAR16* FilePath = AllocatePool(Size);
-	if (FilePath == NULL)
-		return NULL;
-	UINTN Length = 1;
-	FilePath[0] = L'\\';
-	for (Node = DevicePath; !IsDevicePathEnd(Node); Node = NextDevicePathNode(Node))
-	{
-		CONST FILEPATH_DEVICE_PATH* FileNode = (CONST FILEPATH_DEVICE_PATH*)Node;
-		CHAR16 First;
-		CopyMem(&First, FileNode->PathName, sizeof(First));
-		if (First == L'\\')
-			Length = 0;
-		else if (Length > 0 && FilePath[Length - 1] != L'\\')
-			FilePath[Length++] = L'\\';
-		CopyMem(FilePath + Length, FileNode->PathName, DevicePathNodeLength(Node) - SIZE_OF_FILEPATH_DEVICE_PATH);
-		Length += StrLen(FilePath + Length);
-	}
-	return FilePath;
-}
-
-//
-// Leaves a small marker next to the loader so a boot can be confirmed without a console.
-// The path is derived from the loader's own file path, so it works in any layout (including the
-// documented \EFI\Boot\bootx64.efi one) and never needs a directory to be created. Failures
-// (read-only media, no file system) are ignored: this is diagnostic only.
-//
-STATIC
-VOID
-EFIAPI
-TouchMarkerFile(
-	VOID
-	)
-{
-	STATIC CONST CHAR16 MarkerSuffix[] = L"\\loader-ran.txt";
-	STATIC CONST CHAR8 MarkerText[] = "loader reached UefiMain\r\n";
-
-	EFI_LOADED_IMAGE_PROTOCOL* LoadedImage = NULL;
-	if (EFI_ERROR(gBS->OpenProtocol(gImageHandle,
-									&gEfiLoadedImageProtocolGuid,
-									(VOID**)&LoadedImage,
-									gImageHandle,
-									NULL,
-									EFI_OPEN_PROTOCOL_GET_PROTOCOL)))
-		return;
-	CHAR16* FilePath = GetLoaderFilePath(LoadedImage->FilePath);
-	if (FilePath == NULL)
-		return;
-
-	// Keep the directory part without its trailing separator: the suffix supplies one. For a loader
-	// in the volume root this leaves an empty prefix, so the path stays "\loader-ran.txt" rather
-	// than "\\loader-ran.txt", which EDK2's FAT driver resolves to the root directory itself.
-	UINTN DirectoryLength = StrLen(FilePath);
-	while (DirectoryLength > 0 && FilePath[DirectoryLength - 1] != L'\\')
-		--DirectoryLength;
-	while (DirectoryLength > 0 && FilePath[DirectoryLength - 1] == L'\\')
-		--DirectoryLength;
-
-	CHAR16* MarkerPath = AllocatePool((DirectoryLength + ARRAY_SIZE(MarkerSuffix)) * sizeof(CHAR16));
-	if (MarkerPath == NULL)
-	{
-		FreePool(FilePath);
-		return;
-	}
-	CopyMem(MarkerPath, FilePath, DirectoryLength * sizeof(CHAR16));
-	CopyMem(MarkerPath + DirectoryLength, MarkerSuffix, sizeof(MarkerSuffix));
-	FreePool(FilePath);
-
-	EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* FileSystem = NULL;
-	EFI_FILE_HANDLE Volume = NULL;
-	EFI_FILE_HANDLE File = NULL;
-	if (!EFI_ERROR(gBS->HandleProtocol(LoadedImage->DeviceHandle,
-										&gEfiSimpleFileSystemProtocolGuid,
-										(VOID**)&FileSystem)) &&
-		!EFI_ERROR(FileSystem->OpenVolume(FileSystem, &Volume)))
-	{
-		if (!EFI_ERROR(Volume->Open(Volume,
-									&File,
-									MarkerPath,
-									EFI_FILE_MODE_CREATE | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_READ,
-									0)))
-		{
-			UINTN Size = sizeof(MarkerText) - 1;
-			File->Write(File, &Size, (VOID*)MarkerText);
-			File->Close(File);
-		}
-		Volume->Close(Volume);
-	}
-
-	FreePool(MarkerPath);
-}
-
-//
 // Applies \EFI\EfiMirage\EfiMirage.cfg, if present, over the defaults in ConfigData.
 //
 // Accepted encodings are ASCII, UTF-8 with a BOM (bytes above 0x7F are replaced rather than
@@ -1182,7 +1058,6 @@ UefiMain(
 	// Connect all drivers to all controllers
 	//
 	EfiBootManagerConnectAll();
-	TouchMarkerFile();
 
 	//
 	// Set the highest available console mode and clear the screen

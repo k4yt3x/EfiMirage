@@ -4,7 +4,21 @@ on:
   push:
     branches:
       - "**"
+    paths: &ci_paths
+      - "Application/**"
+      - "EfiMirageDxe/**"
+      - "Include/**"
+      - "scripts/**"
+      - "EfiMiragePkg.dec"
+      - "EfiMiragePkg.dsc"
+      - "EfiMirage.props"
+      - "EfiMirage.sln"
+      - "justfile"
+      - ".gitmodules"
+      - ".editorconfig"
+      - ".github/workflows/**"
   pull_request:
+    paths: *ci_paths
   workflow_dispatch:
 
 permissions:

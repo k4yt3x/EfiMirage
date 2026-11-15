@@ -137,10 +137,11 @@ bcdedit /copy {bootmgr} /d "EfiMirage Test"     :: only needed once, and not use
 bcdedit /set {bootmgr} path \EFI\EfiMirage\Loader.efi
 ```
 
-To confirm the firmware really took the entry, the loader writes
-`loader-ran.txt` next to `Loader.efi` on every start; delete it before the reboot and check
-whether it comes back. Revert with
-`bcdedit /set {bootmgr} path \EFI\Microsoft\Boot\bootmgfw.efi`.
+To restore the Windows boot manager, run:
+
+```bat
+bcdedit /set {bootmgr} path \EFI\Microsoft\Boot\bootmgfw.efi
+```
 
 ## Manual test on real hardware
 

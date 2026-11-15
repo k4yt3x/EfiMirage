@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation-only pushes and pull requests no longer trigger CI.
+
 ## [2.0.0] - 2026-11-15
 
 ### Added
@@ -9,7 +13,6 @@
 - Secure Boot state emulation, enabled by default and configurable per boot.
 - Unattended configuration through `EfiMirage.cfg`, with `HOME` overrides.
 - `EfiDSEFix -s` compares Secure Boot state across firmware, Windows, and the registry.
-- `loader-ran.txt` confirms the loader ran during a headless boot.
 - A Linux `just` workflow for cross-compilation, bundle verification, and firmware tests.
 - GitHub Actions checks for pushes and pull requests.
 - Tag-triggered draft GitHub Releases with changelog notes and verified x64 bundles.

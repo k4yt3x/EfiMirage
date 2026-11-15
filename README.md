@@ -11,7 +11,7 @@ emulation, unattended configuration, and a Linux build and test workflow.
 
 - In-memory patching of the Windows boot manager, loader, and kernel.
 - Secure Boot state emulation, enabled by default and configurable per boot.
-- A UEFI loader, a Windows command-line utility, and a boot marker for headless verification.
+- A configurable UEFI loader and a Windows command-line utility.
 - Cross-compiled EFI and Windows binaries, verified bundles, regression tests, and OVMF tests.
 
 Secure Boot emulation changes reported state, not firmware validation or TPM measurements.

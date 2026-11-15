@@ -27,8 +27,8 @@ not install host packages. Wine and MSVC are not needed for cross-compilation.
 `just check` needs only `just`, Python, a POSIX shell, standard utilities, and
 `flock`; it does not need EDK2, MinGW, network access, or the QEMU tooling.
 `just test-unit` also needs GCC and the pinned EDK2/Zydis headers from bootstrap. It compiles
-the loader and driver with native firmware mocks to check configuration boundaries, marker
-paths and boot-attempt lifetimes; it does not boot firmware or execute Windows images.
+the loader and driver with native firmware mocks to check configuration boundaries and
+boot-attempt lifetimes; it does not boot firmware or execute Windows images.
 `just test-emulation` boots the images in OVMF and needs the private QEMU + OVMF
 under `.tooling/`; prepare it once with `python3 scripts/test/fetch-ovmf.py`
 (see `docs/secureboot.md`). `just doctor` checks
@@ -42,15 +42,23 @@ source submodules remain pinned by the repository. Each run bootstraps a fresh w
 Container build steps trust only the checkout path through job-local Git environment settings;
 they do not write global Git configuration or disable ownership checks for other repositories.
 
-- **CI** (`.github/workflows/ci.yaml`) runs on pushes to any branch, pull requests, and manual
-  dispatch. It checks scripts and pipeline tests, runs the native loader/driver regression
-  tests, builds the release EFI and Windows console images, and verifies the bundle. A newer
-  run on the same ref cancels the previous CI run.
+- **CI** (`.github/workflows/ci.yaml`) runs on branch pushes and pull requests that change
+  application/driver code, headers, scripts/tests, EDK2 or Visual Studio build files, `justfile`,
+  submodule or formatting configuration, or Actions workflows. README, changelog, `docs/`,
+  `.github/img/`, and issue-template-only changes do not start CI. Mixed code/documentation changes
+  still run it, and manual dispatch is always available. CI checks scripts and pipeline tests,
+  runs the native loader/driver tests, builds the release EFI and Windows console images, and
+  verifies the bundle.
+  A newer run on the same ref cancels the previous CI run.
 - **CD** (`.github/workflows/release.yaml`) runs on every pushed tag, builds the release
   profile, and creates a **draft GitHub Release** named after the tag once the build passes.
   Manual dispatch on a branch offers `release`, `debug`, or `noopt` and produces Actions
   artifacts only. Dispatch on a tag always builds `release` and runs the release job too.
   Checks and native regression tests must pass before the bundle is uploaded.
+
+A path-filtered CI workflow emits no check for documentation-only pull requests. If repository
+rules require that check for every PR, use an always-running status gate instead of requiring
+this filtered workflow unconditionally.
 
 Download `efimirage-x64-<profile>` from the **CD run's Artifacts** section. Its ZIP contains
 `EfiMirageDxe.efi`, `Loader.efi`, `EfiDSEFix.exe`, and `SHA256SUMS` at the archive root. Retention
@@ -264,10 +272,6 @@ GCC reports loader LTO type-mismatch warnings for `BmRepairAllControllers`,
 `BmSetMemoryTypeInformationVariable`, and `BmIsAutoCreateBootOption` against the
 pinned EDK2 declarations. These remain in the logs; build success is not runtime
 validation, and this build baseline does not alter those upstream functions.
-
-The loader writes `loader-ran.txt` next to itself on every start, so a headless boot can be
-told apart from "the firmware never loaded us". See
-`docs/secureboot.md` for the OVMF boot-entry caveat.
 
 ### Runtime testing
 
