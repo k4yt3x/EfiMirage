@@ -1,21 +1,23 @@
 # EfiMirage
 
-**UEFI boot-chain patching and Secure Boot state emulation for x64 Windows.**
+**UEFI boot-chain patching, Secure Boot and VBS state emulation for x64 Windows.**
 
 EfiMirage is a fork of [EfiGuard](https://github.com/Mattiwatti/EfiGuard) by
 [Mattiwatti](https://github.com/Mattiwatti). It builds on upstream's PatchGuard and
-Driver Signature Enforcement (DSE) patching, adding configurable Secure Boot state
+Driver Signature Enforcement (DSE) patching, adding configurable Secure Boot and VBS/HVCI state
 emulation, unattended configuration, and a Linux build and test workflow.
 
 ## What it provides
 
 - In-memory patching of the Windows boot manager, loader, and kernel.
 - Secure Boot state emulation, enabled by default and configurable per boot.
+- VBS and memory-integrity state emulation, off by default and configurable per boot.
 - A configurable UEFI loader and a Windows command-line utility.
 - Cross-compiled EFI and Windows binaries, verified bundles, regression tests, and OVMF tests.
 
-Secure Boot emulation changes reported state, not firmware validation or TPM measurements.
-Cryptographic authorization of the runtime memory-access interface is not implemented.
+Both emulations change reported state, not firmware validation, the secure kernel, or TPM
+measurements. Cryptographic authorization of the runtime memory-access interface is not
+implemented.
 
 ## Documentation
 
@@ -24,6 +26,7 @@ Cryptographic authorization of the runtime memory-access interface is not implem
 | [Installation and usage](docs/usage.md) | Boot methods, setup, and compatibility limits |
 | [Migrating from EfiGuard](docs/usage.md#migrating-from-efiguard) | Renamed files, configuration, and source interfaces |
 | [Secure Boot emulation](docs/secureboot.md) | Configuration, behavior, limitations, and verification |
+| [VBS and memory integrity emulation](docs/vbs.md) | Reports, limits, registry state, and verification |
 | [Build and development](docs/build.md) | Toolchains, tests, CI/CD, and releases |
 | [Architecture and features](docs/architecture.md) | Boot flow, debugging, and upstream history |
 | [Changelog](CHANGELOG.md) | Release history |

@@ -36,7 +36,7 @@ Loader vs UEFI driver entry comparison
    configure the BIOS to boot from the new drive.
 4. Windows should now boot, and you should see EfiMirage messages during boot.
    To configure without the `HOME` prompt, place `\EFI\EfiMirage\EfiMirage.cfg` on the same
-   volume (see [Secure Boot emulation](secureboot.md)). The loader reads it; a driver that is
+   volume (see [Secure Boot emulation](secureboot.md) and [VBS emulation](vbs.md)). The loader reads it; a driver that is
    installed as a firmware driver entry and never goes through the loader uses the compiled-in
    defaults instead.
 5. If you booted with the `SetVariable` hook (the default), run `EfiDSEFix.exe -d` from an
@@ -63,7 +63,7 @@ EasyUEFI (Windows), or similar.
    and add a UEFI driver entry: `bcfg driver add 0 EfiMirageDxe.efi "EfiMirageDxe"`.
 4. Windows should now boot, and you should see EfiMirage messages during boot.
    To configure without the `HOME` prompt, place `\EFI\EfiMirage\EfiMirage.cfg` on the same
-   volume (see [Secure Boot emulation](secureboot.md)). The loader reads it; a driver that is
+   volume (see [Secure Boot emulation](secureboot.md) and [VBS emulation](vbs.md)). The loader reads it; a driver that is
    installed as a firmware driver entry and never goes through the loader uses the compiled-in
    defaults instead.
 5. If you booted with the `SetVariable` hook (the default), run `EfiDSEFix.exe -d` from an

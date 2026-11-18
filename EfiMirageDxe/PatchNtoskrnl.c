@@ -107,6 +107,8 @@ STATIC CONST UINT8 SigIsolatedUserModeQueryCase[] = {
 // Replacement for the case. r14d = caller's buffer size, r15 = returned length, rdi = buffer.
 // The struct is the measured Windows 11 value with Secure Kernel + HVCI + strict mode + firmware
 // page protection + VBS key flags set; bytes 4..15 stay zero, as they do on a real system.
+STATIC BOOLEAN gVbsQueryPatched = FALSE;
+
 STATIC CONST UINT8 IsolatedUserModeStub[] = {
 	0x41, 0x83, 0xFE, 0x10,								// cmp r14d, 0x10
 	0x74, 0x16,											// je .ok
@@ -961,7 +963,7 @@ DisableDSE(
 		CopyWpMem(SeValidateImageDataMovEaxAddress + 1 /*skip existing mov*/, &Zero, sizeof(Zero));		// mov eax, 0
 	}
 
-	if (BuildNumber >= 16299 && (BypassType == DSE_DISABLE_AT_BOOT || gDriverConfig.FakeVbs != 0))
+	if (BuildNumber >= 16299 && (BypassType == DSE_DISABLE_AT_BOOT || (gDriverConfig.FakeVbs != 0 && gVbsQueryPatched)))
 	{
 		// We are on RS3 or higher. If we can find and patch SeCodeIntegrityQueryInformation, great.
 		// But DSE has been disabled at this point, so success will be returned regardless.
@@ -983,7 +985,7 @@ DisableDSE(
 
 			// Report the observed Windows 11 options, plus the HVCI bits when VBS is being faked.
 			UINT32 Options = 1;
-			if (gDriverConfig.FakeVbs != 0)
+			if (gDriverConfig.FakeVbs != 0 && gVbsQueryPatched)
 				Options = SECI_OPTIONS_BASE |
 					(gDriverConfig.FakeVbs == 2 ? SECI_OPTIONS_HVCI_AUDIT : SECI_OPTIONS_HVCI_STRICT);
 			CopyMem(Patch + SECI_OPTIONS_IMMEDIATE_OFFSET, &Options, sizeof(Options));
@@ -1073,9 +1075,23 @@ PatchNtoskrnl(
 
 	PRINT_KERNEL_PATCH_MSG(L"\r\n[PatchNtoskrnl] Successfully disabled PatchGuard.\r\n");
 
+	if (gDriverConfig.FakeVbs != 0)
+	{
+		PRINT_KERNEL_PATCH_MSG(L"[PatchNtoskrnl] Emulating VBS/HVCI state (%s)...\r\n",
+			gDriverConfig.FakeVbs == 2 ? L"audit" : L"enforced");
+		CONST EFI_STATUS VbsStatus = FakeIsolatedUserModeInformation(ImageBase, NtHeaders, gDriverConfig.FakeVbs);
+		gVbsQueryPatched = !EFI_ERROR(VbsStatus);
+		if (EFI_ERROR(VbsStatus))
+			PRINT_KERNEL_PATCH_MSG(L"    WARNING: could not patch the VBS query case: %llx (%r). "
+				L"No HVCI bits will be reported.\r\n", VbsStatus, VbsStatus);
+		CONST EFI_STATUS HvStatus = FakeHypervisorInformation(ImageBase, NtHeaders);
+		if (EFI_ERROR(HvStatus))
+			PRINT_KERNEL_PATCH_MSG(L"    WARNING: could not patch the hypervisor query: %llx (%r).\r\n", HvStatus, HvStatus);
+	}
+
 	if (gDriverConfig.DseBypassMethod == DSE_DISABLE_AT_BOOT ||
 		(BuildNumber < 9200 && gDriverConfig.DseBypassMethod != DSE_DISABLE_NONE) ||
-		gDriverConfig.FakeVbs != 0)
+		(gDriverConfig.FakeVbs != 0 && gVbsQueryPatched))
 	{
 		// Patch PAGE section to disable DSE at boot, or (on Windows Vista/7) to allow the SetVariable hook to be safely used more than once
 		PRINT_KERNEL_PATCH_MSG(L"[PatchNtoskrnl] %S... [PAGE RVA: 0x%X - 0x%X]\r\n",
@@ -1091,18 +1107,6 @@ PatchNtoskrnl(
 
 		if (gDriverConfig.DseBypassMethod == DSE_DISABLE_AT_BOOT)
 			PRINT_KERNEL_PATCH_MSG(L"\r\n[PatchNtoskrnl] Successfully disabled DSE.\r\n");
-	}
-
-	if (gDriverConfig.FakeVbs != 0)
-	{
-		PRINT_KERNEL_PATCH_MSG(L"[PatchNtoskrnl] Emulating VBS/HVCI state (%s)...\r\n",
-			gDriverConfig.FakeVbs == 2 ? L"audit" : L"enforced");
-		CONST EFI_STATUS VbsStatus = FakeIsolatedUserModeInformation(ImageBase, NtHeaders, gDriverConfig.FakeVbs);
-		if (EFI_ERROR(VbsStatus))
-			PRINT_KERNEL_PATCH_MSG(L"    WARNING: could not patch the VBS query case: %llx (%r).\r\n", VbsStatus, VbsStatus);
-		CONST EFI_STATUS HvStatus = FakeHypervisorInformation(ImageBase, NtHeaders);
-		if (EFI_ERROR(HvStatus))
-			PRINT_KERNEL_PATCH_MSG(L"    WARNING: could not patch the hypervisor query: %llx (%r).\r\n", HvStatus, HvStatus);
 	}
 
 	return Status;

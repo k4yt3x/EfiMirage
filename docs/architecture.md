@@ -28,6 +28,9 @@ tested configurations, see the [validation status](build.md#validation-status).
   still show the
   truth, so BitLocker PCR 7 sealing is unaffected in the other direction. See
   [Secure Boot emulation](secureboot.md).
+- VBS and memory-integrity state emulation, off by default: patches the two kernel queries that
+  report VBS/HVCI and the hypervisor query byte that changes with them, while VBS itself stays
+  off so the memory-access interface keeps working. See [VBS emulation](vbs.md).
 - Supports four-stage patching for when `bootmgfw.efi` starts `bootmgr.efi` rather than
   `winload.efi`. This is the case when a WIM file is loaded to boot WinPE, Windows Setup or Windows
   Recovery mode.

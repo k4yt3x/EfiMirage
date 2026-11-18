@@ -84,8 +84,9 @@ boot (writing `Locked = 0` does not prevent it). `EfiDSEFix -a` does that, creat
 `CI\State\HVCIEnabled` as a **volatile** key the way a real HVCI boot does (it is gone after a
 reboot and leaves nothing behind), and ORs `0x1C000` into `g_CiOptions` so kernel drivers that
 pattern-scan the variable see the same value as on a VBS machine. `-d` and `-e` preserve those
-bits. Run `-a` from a logon task; it is needed once per boot, not once ever. A boot-start driver
-that reads `g_CiOptions` before logon still sees `0x6`.
+bits. It is needed once per boot, not once ever: `scripts/install-vbs-task.ps1` installs a
+scheduled task that runs it as SYSTEM at start (remove it with `-Remove`). A boot-start driver that
+reads `g_CiOptions` before the task runs still sees `0x6`.
 
 ## Why the remaining differences exist
 

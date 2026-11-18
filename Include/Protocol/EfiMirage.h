@@ -92,7 +92,11 @@ typedef struct _EFIMIRAGE_BACKDOOR_DATA {
 //
 // Configuration data version. Must equal the value below or Configure() is refused.
 //
-#define EFIMIRAGE_CONFIGURATION_DATA_VERSION 2
+// 0x100 rather than a small number: a loader built before this field existed starts its struct
+// with DseBypassMethod, whose only values are 0, 1 and 2. A small version would let such a caller
+// through and silently misread every later field.
+//
+#define EFIMIRAGE_CONFIGURATION_DATA_VERSION 0x100
 
 //
 // Reported state left behind for the Windows-side client, so it can tell an emulated VBS state
