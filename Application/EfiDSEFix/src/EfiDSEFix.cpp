@@ -329,6 +329,41 @@ IsVbsEnabled(
 	return FALSE;
 }
 
+static
+NTSTATUS
+WriteToCiOptions(
+	_In_ PVOID CiVariableAddress,
+	_In_ ULONG CiOptionsValue,
+	_Out_opt_ PULONG OldCiOptionsValue,
+	_In_ BOOLEAN ReadOnly
+	);
+
+//
+// Adds the HVCI bits a real memory-integrity machine carries in g_CiOptions, leaving the low
+// enforcement bits alone. Used by -V so kernel drivers that read the variable directly see the
+// same value they would on a VBS machine.
+//
+NTSTATUS
+SetCiOptionsHvciBits(
+	)
+{
+	PVOID CiOptionsAddress;
+	NTSTATUS Status = FindCiOptionsVariable(&CiOptionsAddress);
+	if (!NT_SUCCESS(Status))
+		return Status;
+
+	ULONG Current = 0;
+	Status = WriteToCiOptions(CiOptionsAddress, 0, &Current, TRUE);
+	if (!NT_SUCCESS(Status))
+		return Status;
+
+	CONST ULONG Wanted = Current | EFIMIRAGE_HVCI_OPTIONS_MASK;
+	if (Wanted == Current)
+		return STATUS_SUCCESS;
+
+	return WriteToCiOptions(CiOptionsAddress, Wanted, nullptr, FALSE);
+}
+
 NTSTATUS
 TestSetVariableHook(
 	)
@@ -483,9 +518,23 @@ AdjustCiOptions(
 
 	Printf(L"%ls at 0x%p.\n", (NtCurrentPeb()->OSBuildNumber >= 9200 ? L"CI!g_CiOptions" : L"nt!g_CiEnabled"), CiOptionsAddress);
 
+	// A real HVCI machine keeps the HVCI bits in this dword; only the low enforcement bits change
+	// when DSE is toggled. Read the current value first so those bits survive the update.
+	ULONG Current = 0;
+	if (!ReadOnly)
+	{
+		CONST NTSTATUS ReadStatus = WriteToCiOptions(CiOptionsAddress, 0, &Current, TRUE);
+		if (!NT_SUCCESS(ReadStatus))
+		{
+			Printf(L"Failed to read the current value: 0x%08lX.\n", ReadStatus);
+			return ReadStatus;
+		}
+		Current &= EFIMIRAGE_HVCI_OPTIONS_MASK;
+	}
+
 	// Enable/disable CI
 	Status = WriteToCiOptions(CiOptionsAddress,
-							CiOptionsValue,
+							ReadOnly ? CiOptionsValue : (CiOptionsValue | Current),
 							OldCiOptionsValue,
 							ReadOnly);
 	return Status;

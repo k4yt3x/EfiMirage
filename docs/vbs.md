@@ -73,15 +73,32 @@ Windows 11 26300, VBS genuinely off, `FakeVbs = 1`:
 | WMI configured | {2} | {2} (after `EfiDSEFix -V`) |
 | WMI running | {2} | {2} |
 | `CI\State\HVCIEnabled` | 1 | 1 (after `EfiDSEFix -V`) |
+| `g_CiOptions` | `0x1C006` | `0x1C006` (after `EfiDSEFix -V`) |
 | AvailableSecurityProperties | {1,2,4,5} | {2,4,5,8} |
 | `Secure System` process | present | absent |
-| `g_CiOptions` | HVCI bits set | `0x6` |
-| `0xA9` | `00 00 00 00` | `00 00 00 01` |
+| `0xA9` | `00 00 00 00` | `00 00 00 01` (APIC virtualization; CPU property, not VBS) |
 
 Windows clears `EnableVirtualizationBasedSecurity` and the HVCI scenario `Enabled` whenever VBS
 fails to start, which is every boot here, so those two keys have to be written again after each
-boot. `EfiDSEFix -V` does that, plus `CI\State\HVCIEnabled` (which persists once written). Run it
-from a logon task if a check happens before you would run it by hand.
+boot (writing `Locked = 0` does not prevent it). `EfiDSEFix -V` does that, writes
+`CI\State\HVCIEnabled` (which persists once written), and ORs `0x1C000` into `g_CiOptions` so
+kernel drivers that pattern-scan the variable see the same value as on a VBS machine. `-d` and
+`-e` preserve those bits. Run `-V` from a logon task: a boot-start driver that reads
+`g_CiOptions` before logon still sees `0x6`.
+
+## Why the remaining differences exist
+
+- **AvailableSecurityProperties 1.** `Win32_DeviceGuard.dll` sets this property from
+  `CPUID.0x40000003:EBX[16]` (the hypervisor's AccessVsm bit), falling back to
+  `IsProcessorFeaturePresent(20/21)`. Both describe a hypervisor that actually launched VBS, so
+  only patching the hypervisor (`hvix64.exe`) or the provider can restore it.
+- **`Secure System`.** It is a *minimal process* the kernel creates for VSM (no PEB, no TEB,
+  `EPROCESS.Minimal = 1`), not an ordinary process. A kernel driver could create one with
+  `NtCreateProcessEx` flag `0x800`; nothing running in EFI can.
+- **CPUID AccessVsm.** The hypervisor decides it. With `VbsPolicyDisabled` set, VBS is not
+  launched and the bit stays clear.
+- **`0xA9`.** The structure is `DMA available/in use`, `MBEC`, `APIC virtualization`; the byte that
+  differs here is the last one and reflects the host CPU, not VBS.
 
 ## Verifying
 

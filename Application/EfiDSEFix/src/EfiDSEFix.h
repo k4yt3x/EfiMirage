@@ -49,6 +49,13 @@ NTSTATUS
 ApplyVbsState(
 	);
 
+NTSTATUS
+SetCiOptionsHvciBits(
+	);
+
+// HVCI-related bits in g_CiOptions on a real memory-integrity machine (KVC reports 0x1C006).
+#define EFIMIRAGE_HVCI_OPTIONS_MASK 0x0001C000
+
 // pe.cpp
 NTSTATUS
 MapFileSectionView(

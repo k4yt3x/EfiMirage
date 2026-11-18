@@ -408,7 +408,6 @@ NTSTATUS
 ApplyVbsState(
 	)
 {
-	CONST ULONG One = 1;
 	CONST PWCHAR DeviceGuard = const_cast<PWCHAR>(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\DeviceGuard");
 	CONST PWCHAR Scenario = const_cast<PWCHAR>(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity");
 	CONST PWCHAR CiState = const_cast<PWCHAR>(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\CI\\State");
@@ -417,13 +416,20 @@ ApplyVbsState(
 	{
 		PCWSTR Path;
 		PCWSTR Value;
+		ULONG Data;
 	} Settings[] =
 	{
-		{ DeviceGuard, L"EnableVirtualizationBasedSecurity" },
-		{ DeviceGuard, L"RequirePlatformSecurityFeatures" },
-		{ Scenario,    L"Enabled" },
-		{ CiState,     L"HVCIEnabled" },
+		{ DeviceGuard, L"EnableVirtualizationBasedSecurity", 1 },
+		{ DeviceGuard, L"RequirePlatformSecurityFeatures", 1 },
+		{ DeviceGuard, L"Locked", 0 },
+		{ Scenario,    L"Enabled", 1 },
+		{ Scenario,    L"Locked", 0 },
+		{ CiState,     L"HVCIEnabled", 1 },
 	};
+
+	// The kernel-side value a real memory-integrity machine carries; -V is what a logon task runs.
+	CONST NTSTATUS CiStatus = SetCiOptionsHvciBits();
+	Printf(L"  g_CiOptions HVCI bits: %ls\n", NT_SUCCESS(CiStatus) ? L"ok" : L"failed");
 
 	NTSTATUS FirstError = STATUS_SUCCESS;
 	for (ULONG i = 0; i < ARRAYSIZE(Settings); ++i)
@@ -432,11 +438,11 @@ ApplyVbsState(
 													Settings[i].Path,
 													Settings[i].Value,
 													REG_DWORD,
-													const_cast<PULONG>(&One),
-													sizeof(One));
+													&Settings[i].Data,
+													sizeof(Settings[i].Data));
 		if (!NT_SUCCESS(Status) && NT_SUCCESS(FirstError))
 			FirstError = Status;
-		Printf(L"  %ls = 1: %ls\n", Settings[i].Value, NT_SUCCESS(Status) ? L"ok" : L"failed");
+		Printf(L"  %ls = %lu: %ls\n", Settings[i].Value, Settings[i].Data, NT_SUCCESS(Status) ? L"ok" : L"failed");
 	}
 
 	return FirstError;
