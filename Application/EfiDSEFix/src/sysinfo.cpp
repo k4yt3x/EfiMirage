@@ -399,6 +399,49 @@ ReportVbsState(
 }
 
 //
+// Creates CI\State\HVCIEnabled the way a real HVCI boot does: the key is volatile, so it lives
+// only for this boot and leaves nothing behind. A persistent key left by an earlier version cannot
+// be turned volatile, so it is deleted and recreated.
+//
+static
+NTSTATUS
+CreateVolatileCiState(
+	)
+{
+	UNICODE_STRING Path;
+	RtlInitUnicodeString(&Path, L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\CI\\State");
+	OBJECT_ATTRIBUTES Attributes;
+	InitializeObjectAttributes(&Attributes, &Path, OBJ_CASE_INSENSITIVE, nullptr, nullptr);
+
+	HANDLE Key = nullptr;
+	ULONG Disposition = 0;
+	NTSTATUS Status = NtCreateKey(&Key, KEY_SET_VALUE, &Attributes, 0, nullptr, REG_OPTION_VOLATILE, &Disposition);
+	if (Status == STATUS_OBJECT_NAME_COLLISION)
+	{
+		Status = NtOpenKey(&Key, DELETE | KEY_SET_VALUE, &Attributes);
+		if (NT_SUCCESS(Status))
+		{
+			CONST NTSTATUS DeleteStatus = NtDeleteKey(Key);
+			NtClose(Key);
+			Key = nullptr;
+			if (NT_SUCCESS(DeleteStatus))
+				Status = NtCreateKey(&Key, KEY_SET_VALUE, &Attributes, 0, nullptr, REG_OPTION_VOLATILE, &Disposition);
+			else
+				Status = DeleteStatus;
+		}
+	}
+	if (!NT_SUCCESS(Status))
+		return Status;
+
+	UNICODE_STRING ValueName;
+	RtlInitUnicodeString(&ValueName, L"HVCIEnabled");
+	ULONG One = 1;
+	Status = NtSetValueKey(Key, &ValueName, 0, REG_DWORD, &One, sizeof(One));
+	NtClose(Key);
+	return Status;
+}
+
+//
 // Puts the registry back into "VBS and memory integrity configured" state. Windows clears these
 // keys itself when VBS fails to start (which it does whenever the driver keeps VbsPolicyDisabled
 // set), so they have to be restored at runtime. The CI state key is what memory integrity
@@ -410,7 +453,6 @@ ApplyVbsState(
 {
 	CONST PWCHAR DeviceGuard = const_cast<PWCHAR>(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\DeviceGuard");
 	CONST PWCHAR Scenario = const_cast<PWCHAR>(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity");
-	CONST PWCHAR CiState = const_cast<PWCHAR>(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\CI\\State");
 
 	struct
 	{
@@ -424,12 +466,14 @@ ApplyVbsState(
 		{ DeviceGuard, L"Locked", 0 },
 		{ Scenario,    L"Enabled", 1 },
 		{ Scenario,    L"Locked", 0 },
-		{ CiState,     L"HVCIEnabled", 1 },
 	};
 
 	// The kernel-side value a real memory-integrity machine carries; -V is what a logon task runs.
 	CONST NTSTATUS CiStatus = SetCiOptionsHvciBits();
 	Printf(L"  g_CiOptions HVCI bits: %ls\n", NT_SUCCESS(CiStatus) ? L"ok" : L"failed");
+
+	CONST NTSTATUS StateStatus = CreateVolatileCiState();
+	Printf(L"  CI\\State\\HVCIEnabled (volatile): %ls\n", NT_SUCCESS(StateStatus) ? L"ok" : L"failed");
 
 	NTSTATUS FirstError = STATUS_SUCCESS;
 	for (ULONG i = 0; i < ARRAYSIZE(Settings); ++i)
