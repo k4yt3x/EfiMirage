@@ -5,7 +5,7 @@
 ### Added
 
 - VBS and memory integrity emulation, off by default and configurable per boot.
-- `EfiDSEFix -v` reports VBS/HVCI surfaces; `-V` restores registry and CI option state.
+- `EfiDSEFix -v` reports VBS/HVCI surfaces; `-a` restores registry and CI state.
 
 ### Changed
 

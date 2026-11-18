@@ -16,9 +16,9 @@ PrintUsage(
 		L"    -d, --disable%15lsDisable DSE\n"
 		L"    -e, --enable%ls%2ls(Re)enable DSE\n"
 		L"    -i, --info%18lsDump system info\n"
-		L"    -s, --secureboot%12lsReport Secure Boot state as Windows sees it\n"
-		L"    -v, --vbs%20lsReport VBS and HVCI state as Windows sees it\n"
-		L"    -V, --vbs-apply%14lsRestore the registry state a VBS boot leaves behind\n",
+		L"    -s, --secureboot%12lsReport Secure Boot state\n"
+		L"    -v, --vbs%19lsReport VBS and HVCI state\n"
+		L"    -a, --vbsapply%14lsRestore VBS registry and CI state\n",
 		ProgramName, L"", L"",
 		CiOptionsName, L"",
 		(Win8OrHigher ? L" [g_CiOptions]" : L"              "),
@@ -109,16 +109,16 @@ int wmain(int argc, wchar_t** argv)
 		Status = ReportSecureBootState();
 		goto Exit;
 	}
+	else if (wcsncmp(argv[1], L"-a", sizeof(L"-a") / sizeof(WCHAR) - 1) == 0 ||
+		wcsncmp(argv[1], L"--vbsapply", sizeof(L"--vbsapply") / sizeof(WCHAR) - 1) == 0)
+	{
+		Status = ApplyVbsState();
+		goto Exit;
+	}
 	else if (wcsncmp(argv[1], L"-v", sizeof(L"-v") / sizeof(WCHAR) - 1) == 0 ||
 		wcsncmp(argv[1], L"--vbs", sizeof(L"--vbs") / sizeof(WCHAR) - 1) == 0)
 	{
 		Status = ReportVbsState();
-		goto Exit;
-	}
-	else if (wcsncmp(argv[1], L"-V", sizeof(L"-V") / sizeof(WCHAR) - 1) == 0 ||
-		wcsncmp(argv[1], L"--vbs-apply", sizeof(L"--vbs-apply") / sizeof(WCHAR) - 1) == 0)
-	{
-		Status = ApplyVbsState();
 		goto Exit;
 	}
 	else

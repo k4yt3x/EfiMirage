@@ -70,21 +70,21 @@ Windows 11 26300, VBS genuinely off, `FakeVbs = 1`:
 | `0xA5` | `37 10 01` | `37 10 01` |
 | `0x5B` | `01 00 01 04` | `01 00 01 04` |
 | WMI status | 2 | 2 |
-| WMI configured | {2} | {2} (after `EfiDSEFix -V`) |
+| WMI configured | {2} | {2} (after `EfiDSEFix -a`) |
 | WMI running | {2} | {2} |
-| `CI\State\HVCIEnabled` | 1 (volatile) | 1 (volatile, after `EfiDSEFix -V`) |
-| `g_CiOptions` | `0x1C006` | `0x1C006` (after `EfiDSEFix -V`) |
+| `CI\State\HVCIEnabled` | 1 (volatile) | 1 (volatile, after `EfiDSEFix -a`) |
+| `g_CiOptions` | `0x1C006` | `0x1C006` (after `EfiDSEFix -a`) |
 | AvailableSecurityProperties | {1,2,4,5} | {2,4,5,8} |
 | `Secure System` process | present | absent |
 | `0xA9` | `00 00 00 00` | `00 00 00 01` (APIC virtualization; CPU property, not VBS) |
 
 Windows clears `EnableVirtualizationBasedSecurity` and the HVCI scenario `Enabled` whenever VBS
 fails to start, which is every boot here, so those two keys have to be written again after each
-boot (writing `Locked = 0` does not prevent it). `EfiDSEFix -V` does that, creates
+boot (writing `Locked = 0` does not prevent it). `EfiDSEFix -a` does that, creates
 `CI\State\HVCIEnabled` as a **volatile** key the way a real HVCI boot does (it is gone after a
 reboot and leaves nothing behind), and ORs `0x1C000` into `g_CiOptions` so kernel drivers that
 pattern-scan the variable see the same value as on a VBS machine. `-d` and `-e` preserve those
-bits. Run `-V` from a logon task; it is needed once per boot, not once ever. A boot-start driver
+bits. Run `-a` from a logon task; it is needed once per boot, not once ever. A boot-start driver
 that reads `g_CiOptions` before logon still sees `0x6`.
 
 ## Why the remaining differences exist

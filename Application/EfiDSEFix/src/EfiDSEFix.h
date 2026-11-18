@@ -161,7 +161,9 @@ Printf(
 	...
 	)
 {
-	WCHAR Buffer[512];
+	// Static: the usage text is close to this size for one frame, and a bigger local buffer
+	// would pull in the stack-probe helper on MinGW.
+	static WCHAR Buffer[1024];
 	va_list VaList;
 	va_start(VaList, Format);
 	LONG Formatted = _vsnwprintf(Buffer, sizeof(Buffer) / sizeof(WCHAR) - 1, Format, VaList);
