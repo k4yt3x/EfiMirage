@@ -264,6 +264,19 @@ static EFI_STATUS EFIAPI MockConvertPointer(UINTN Disposition, VOID** Address)
 static EFI_STATUS EFIAPI MockSetVariable(CHAR16* Name, EFI_GUID* Guid, UINT32 Attributes,
 	UINTN Size, VOID* Data)
 {
+	// Configure() records the emulation state; that write is expected and is not a backdoor call.
+	CONST CHAR16 StateName[] = EFIMIRAGE_STATE_VARIABLE_NAME;
+	if (Name != NULL && StrnCmp(Name, StateName, (sizeof(StateName) / sizeof(CHAR16)) - 1) == 0)
+	{
+		// Nothing emulated: the driver deletes the variable instead of writing it.
+		if (Attributes == 0 && Size == 0 && Data == NULL)
+			return EFI_SUCCESS;
+		CHECK(Attributes == (EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS));
+		CHECK(Size == sizeof(EFIMIRAGE_STATE_DATA) && Data != NULL);
+		CHECK(((EFIMIRAGE_STATE_DATA*)Data)->Magic == EFIMIRAGE_STATE_MAGIC);
+		return EFI_SUCCESS;
+	}
+
 	CHECK(Name == ProbeName && Guid == EFIMIRAGE_BACKDOOR_VARIABLE_GUID);
 	CHECK(Attributes == ExpectedAttributes && Size == 0 && Data == NULL);
 	++SetVariableCalls;

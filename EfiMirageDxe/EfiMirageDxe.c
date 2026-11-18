@@ -39,6 +39,47 @@ EFIMIRAGE_DRIVER_PROTOCOL gEfiMirageDriverProtocol =
 };
 
 //
+// GUID of the boot-service state variable the Windows-side client reads.
+//
+STATIC CONST EFI_GUID mStateVariableGuid = EFIMIRAGE_STATE_VARIABLE_GUID;
+
+//
+// Records what this boot is emulating so the Windows-side client can tell an emulated VBS state
+// from a real one. Boot service + runtime only, which makes it volatile: it disappears at power
+// loss and is never written to NVRAM.
+//
+STATIC
+VOID
+EFIAPI
+UpdateStateVariable(
+	VOID
+	)
+{
+	EFIMIRAGE_STATE_DATA State;
+	State.Magic = EFIMIRAGE_STATE_MAGIC;
+	State.Version = EFIMIRAGE_STATE_VERSION;
+	State.Flags = 0;
+	if (gDriverConfig.FakeVbs != 0)
+		State.Flags |= EFIMIRAGE_STATE_FLAG_FAKE_VBS;
+	if (gDriverConfig.FakeSecureBoot)
+		State.Flags |= EFIMIRAGE_STATE_FLAG_FAKE_SECURE_BOOT;
+
+	if (State.Flags == 0)
+	{
+		gRT->SetVariable((CHAR16*)EFIMIRAGE_STATE_VARIABLE_NAME, (EFI_GUID*)&mStateVariableGuid, 0, 0, NULL);
+		return;
+	}
+
+	CONST EFI_STATUS Status = gRT->SetVariable((CHAR16*)EFIMIRAGE_STATE_VARIABLE_NAME,
+												(EFI_GUID*)&mStateVariableGuid,
+												EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS,
+												sizeof(State),
+												&State);
+	if (EFI_ERROR(Status))
+		Print(L"WARNING: failed to record emulation state: %llx (%r)\r\n", Status, Status);
+}
+
+//
 // Default driver configuration used if Configure() is not called
 //
 EFIMIRAGE_CONFIGURATION_DATA gDriverConfig = {
@@ -46,7 +87,8 @@ EFIMIRAGE_CONFIGURATION_DATA gDriverConfig = {
 	DSE_DISABLE_SETVARIABLE_HOOK,			// DseBypassMethod
 	FALSE,									// WaitForKeyPress
 	TRUE,									// FakeSecureBoot
-	{ 0, 0 }								// Reserved
+	0,										// FakeVbs
+	{ 0, 0, 0 }								// Reserved
 };
 
 //
@@ -539,12 +581,18 @@ DriverConfigure(
 	if ((UINT32)ConfigurationData->DseBypassMethod > (UINT32)DSE_DISABLE_SETVARIABLE_HOOK)
 		return EFI_INVALID_PARAMETER;
 
+	if (ConfigurationData->FakeVbs > 2)
+		return EFI_INVALID_PARAMETER;
+
 	gDriverConfig = *ConfigurationData;
 
-	Print(L"Configuration data accepted: DSE bypass %u, wait for keypress %u, fake Secure Boot %u.\r\n\r\n",
+	Print(L"Configuration data accepted: DSE bypass %u, wait for keypress %u, fake Secure Boot %u, fake VBS %u.\r\n\r\n",
 		(UINTN)gDriverConfig.DseBypassMethod,
 		(UINTN)gDriverConfig.WaitForKeyPress,
-		(UINTN)gDriverConfig.FakeSecureBoot);
+		(UINTN)gDriverConfig.FakeSecureBoot,
+		(UINTN)gDriverConfig.FakeVbs);
+
+	UpdateStateVariable();
 
 	return EFI_SUCCESS;
 }

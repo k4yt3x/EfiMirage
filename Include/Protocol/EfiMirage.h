@@ -92,7 +92,26 @@ typedef struct _EFIMIRAGE_BACKDOOR_DATA {
 //
 // Configuration data version. Must equal the value below or Configure() is refused.
 //
-#define EFIMIRAGE_CONFIGURATION_DATA_VERSION 1
+#define EFIMIRAGE_CONFIGURATION_DATA_VERSION 2
+
+//
+// Reported state left behind for the Windows-side client, so it can tell an emulated VBS state
+// from a real one. Boot-service + runtime, not non-volatile: it lives only for this boot.
+//
+#define EFIMIRAGE_STATE_VARIABLE_NAME L"MirageState"
+#define EFIMIRAGE_STATE_VARIABLE_GUID \
+	{ 0x6b1f3a52, 0x8c4d, 0x4e77, { 0x9a, 0x2b, 0x51, 0x13, 0xc8, 0x6f, 0x2d, 0x40 } }
+#define EFIMIRAGE_STATE_MAGIC 0x4547524D  // 'MRGE'
+#define EFIMIRAGE_STATE_VERSION 1
+
+#define EFIMIRAGE_STATE_FLAG_FAKE_VBS 0x1
+#define EFIMIRAGE_STATE_FLAG_FAKE_SECURE_BOOT 0x2
+
+typedef struct _EFIMIRAGE_STATE_DATA {
+	UINT32 Magic;
+	UINT32 Version;
+	UINT32 Flags;
+} EFIMIRAGE_STATE_DATA;
 
 
 //
@@ -129,7 +148,16 @@ typedef struct _EFIMIRAGE_CONFIGURATION_DATA {
 	//
 	BOOLEAN FakeSecureBoot;
 
-	UINT8 Reserved[2];
+	//
+	// Whether to make VBS and HVCI look enabled and running to everything that asks the kernel.
+	// 0 = off, 1 = HVCI enforced, 2 = HVCI audit. The kernel patches only change what
+	// NtQuerySystemInformation reports; VBS itself stays off so the SetVariable backdoor keeps
+	// working. See docs/vbs.md for the surfaces this covers and the ones it cannot.
+	// Default: 0
+	//
+	UINT8 FakeVbs;
+
+	UINT8 Reserved[3];
 } EFIMIRAGE_CONFIGURATION_DATA;
 
 

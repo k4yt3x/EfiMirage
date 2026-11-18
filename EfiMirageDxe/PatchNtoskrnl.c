@@ -69,14 +69,180 @@ STATIC CONST UINT8 SigSeCodeIntegrityQueryInformation[] = {
 	0x74, 0xCC												// jz XX
 };
 
-// Patched SeCodeIntegrityQueryInformation which reports that DSE is enabled
-STATIC CONST UINT8 SeCodeIntegrityQueryInformationPatch[] = {
+// Patched SeCodeIntegrityQueryInformation which reports that DSE is enabled. The options
+// immediate is filled in at patch time: 1 normally, or the observed Windows 11 value with the
+// HVCI bits added when VBS emulation is on.
+STATIC CONST UINT8 SeCodeIntegrityQueryInformationPatchTemplate[] = {
 	0x41, 0xC7, 0x00, 0x08, 0x00, 0x00, 0x00,				// mov dword ptr [r8], 8
 	0x33, 0xC0,												// xor eax, eax
-	0xC7, 0x41, 0x04, 0x01, 0x00, 0x00, 0x00,				// mov dword ptr [rcx+4], 1
+	0xC7, 0x41, 0x04, 0xCC, 0xCC, 0xCC, 0xCC,				// mov dword ptr [rcx+4], <options>
 	0xC3													// ret
 };
+#define SECI_OPTIONS_IMMEDIATE_OFFSET 12
 
+// Code integrity options as reported by a stock Windows 11 24H2+ machine:
+// ENABLED | UMCI_ENABLED | WHQL_ENFORCEMENT | WHQL_AUDITMODE. The HVCI bits are added on top.
+#define SECI_OPTIONS_BASE 0x0000C005
+#define SECI_OPTIONS_HVCI_STRICT 0x00003400	// KMCI_ENABLED | KMCI_STRICTMODE | IUM_ENABLED
+#define SECI_OPTIONS_HVCI_AUDIT 0x00002C00	// KMCI_ENABLED | KMCI_AUDITMODE | IUM_ENABLED
+
+
+//
+// Signature for the SystemIsolatedUserModeInformation (0xA5) case in nt!ExpQuerySystemInformation.
+// The case reports 16 bytes and rejects every other length; the replacement below reproduces both.
+//
+STATIC CONST UINT8 SigIsolatedUserModeQueryCase[] = {
+	0xC7, 0x44, 0x24, 0x34, 0x10, 0x00, 0x00, 0x00,		// mov dword ptr [rsp+0x34], 0x10
+	0x41, 0x83, 0xFE, 0x10,								// cmp r14d, 0x10
+	0x74, 0xCC,											// je case body
+	0x4D, 0x85, 0xFF,									// test r15, r15
+	0x0F, 0x84, 0xCC, 0xCC, 0xCC, 0xCC,					// je buffer too small
+	0x41, 0xC7, 0x07, 0x10, 0x00, 0x00, 0x00,			// mov dword ptr [r15], 0x10
+	0xE9, 0xCC, 0xCC, 0xCC, 0xCC							// jmp buffer too small
+};
+
+// Distance from the case above to the function epilogue in the builds this signature matches.
+#define ISOLATED_USER_MODE_EPILOGUE_OFFSET 0x1438
+
+// Replacement for the case. r14d = caller's buffer size, r15 = returned length, rdi = buffer.
+// The struct is the measured Windows 11 value with Secure Kernel + HVCI + strict mode + firmware
+// page protection + VBS key flags set; bytes 4..15 stay zero, as they do on a real system.
+STATIC CONST UINT8 IsolatedUserModeStub[] = {
+	0x41, 0x83, 0xFE, 0x10,								// cmp r14d, 0x10
+	0x74, 0x16,											// je .ok
+	0x4D, 0x85, 0xFF,									// test r15, r15
+	0x74, 0x07,											// je .short
+	0x41, 0xC7, 0x07, 0x10, 0x00, 0x00, 0x00,			// mov dword ptr [r15], 0x10
+	0xB8, 0x04, 0x00, 0x00, 0xC0,						// mov eax, 0xC0000004
+	0xE9, 0x1C, 0x14, 0x00, 0x00,						// jmp epilogue
+	// .ok
+	0x48, 0xB8, 0x37, 0x10, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,	// mov rax, 0x0000000000011037
+	0x48, 0x89, 0x07,									// mov qword ptr [rdi], rax
+	0x48, 0xC7, 0x47, 0x08, 0x00, 0x00, 0x00, 0x00,		// mov qword ptr [rdi+8], 0
+	0x4D, 0x85, 0xFF,									// test r15, r15
+	0x74, 0x07,											// je .done
+	0x41, 0xC7, 0x07, 0x10, 0x00, 0x00, 0x00,			// mov dword ptr [r15], 0x10
+	// .done
+	0x33, 0xC0,											// xor eax, eax
+	0xE9, 0xF4, 0x13, 0x00, 0x00						// jmp epilogue
+};
+#define ISOLATED_USER_MODE_VALUE_OFFSET 30
+
+//
+// The SystemHypervisorInformation query (0x5B) copies a byte that is 0x04 on a machine where VBS
+// was launched. Patching the byte's source does not survive kernel initialisation (it lives in a
+// page that is written during init), so the load is replaced with an immediate instead:
+//   mov al, [rip+disp32] ; mov [rsp+3], al   ->   mov byte ptr [rsp+3], 4 ; nop x5
+//
+STATIC CONST UINT8 SigHypervisorInformationVbsByte[] = {
+	0x8A, 0x05, 0xCC, 0xCC, 0xCC, 0xCC,		// mov al, byte ptr [rip+disp32]
+	0x88, 0x44, 0x24, 0x03					// mov byte ptr [rsp+3], al
+};
+
+STATIC CONST UINT8 HypervisorInformationVbsBytePatch[] = {
+	0xC6, 0x44, 0x24, 0x03, 0x04,			// mov byte ptr [rsp+3], 4
+	0x90, 0x90, 0x90, 0x90, 0x90			// nop
+};
+
+STATIC
+EFI_STATUS
+EFIAPI
+FakeHypervisorInformation(
+	IN CONST UINT8* ImageBase,
+	IN PEFI_IMAGE_NT_HEADERS NtHeaders
+	)
+{
+	PEFI_IMAGE_SECTION_HEADER PageSection = NULL;
+	PEFI_IMAGE_SECTION_HEADER Section = IMAGE_FIRST_SECTION(NtHeaders);
+	for (UINT16 i = 0; i < NtHeaders->FileHeader.NumberOfSections; ++i)
+	{
+		CHAR8 SectionName[EFI_IMAGE_SIZEOF_SHORT_NAME + 1];
+		CopyMem(SectionName, Section->Name, EFI_IMAGE_SIZEOF_SHORT_NAME);
+		SectionName[EFI_IMAGE_SIZEOF_SHORT_NAME] = '\0';
+		if (AsciiStrCmp(SectionName, "PAGE") == 0)
+		{
+			PageSection = Section;
+			break;
+		}
+		Section++;
+	}
+	if (PageSection == NULL)
+		return EFI_NOT_FOUND;
+
+	VOID* Found = NULL;
+	CONST EFI_STATUS Status = FindPattern(SigHypervisorInformationVbsByte,
+										0xCC,
+										sizeof(SigHypervisorInformationVbsByte),
+										ImageBase + PageSection->VirtualAddress,
+										PageSection->SizeOfRawData,
+										&Found);
+	if (EFI_ERROR(Status))
+		return Status;
+
+	CopyWpMem(Found, HypervisorInformationVbsBytePatch, sizeof(HypervisorInformationVbsBytePatch));
+	PRINT_KERNEL_PATCH_MSG(L"    Patched ExpQuerySystemInformation(5B) [RVA: 0x%X].\r\n",
+		(UINT32)((UINT8*)Found - ImageBase));
+	return EFI_SUCCESS;
+}
+
+//
+// Patches the SystemIsolatedUserModeInformation query so VBS/HVCI appear enabled and running.
+// Only the reported state changes; the kernel keeps behaving as if VBS were off, which is what
+// lets the SetVariable backdoor keep working.
+//
+STATIC
+EFI_STATUS
+EFIAPI
+FakeIsolatedUserModeInformation(
+	IN CONST UINT8* ImageBase,
+	IN PEFI_IMAGE_NT_HEADERS NtHeaders,
+	IN UINT8 Mode
+	)
+{
+	PEFI_IMAGE_SECTION_HEADER PageSection = NULL;
+	PEFI_IMAGE_SECTION_HEADER Section = IMAGE_FIRST_SECTION(NtHeaders);
+	for (UINT16 i = 0; i < NtHeaders->FileHeader.NumberOfSections; ++i)
+	{
+		CHAR8 SectionName[EFI_IMAGE_SIZEOF_SHORT_NAME + 1];
+		CopyMem(SectionName, Section->Name, EFI_IMAGE_SIZEOF_SHORT_NAME);
+		SectionName[EFI_IMAGE_SIZEOF_SHORT_NAME] = '\0';
+		if (AsciiStrCmp(SectionName, "PAGE") == 0)
+		{
+			PageSection = Section;
+			break;
+		}
+		Section++;
+	}
+	if (PageSection == NULL)
+		return EFI_NOT_FOUND;
+
+	VOID* Found = NULL;
+	CONST EFI_STATUS Status = FindPattern(SigIsolatedUserModeQueryCase,
+										0xCC,
+										sizeof(SigIsolatedUserModeQueryCase),
+										ImageBase + PageSection->VirtualAddress,
+										PageSection->SizeOfRawData,
+										&Found);
+	if (EFI_ERROR(Status))
+		return Status;
+
+	// Verify the jump distance this stub hardcodes: the epilogue must still start with the
+	// stack cookie reload, otherwise a build with a different layout would be patched blindly.
+	CONST UINT8* CaseStart = (UINT8*)Found;
+	CONST UINT8 EpiloguePrefix[] = { 0x48, 0x8B, 0x8C, 0x24, 0xA8, 0x03, 0x00, 0x00 };
+	if (CompareMem(CaseStart + ISOLATED_USER_MODE_EPILOGUE_OFFSET, EpiloguePrefix, sizeof(EpiloguePrefix)) != 0)
+		return EFI_UNSUPPORTED;
+
+	UINT8 Stub[sizeof(IsolatedUserModeStub)];
+	CopyMem(Stub, IsolatedUserModeStub, sizeof(Stub));
+	CONST UINT32 Value = Mode == 2 ? 0x00011033 : 0x00011037;	// audit clears HvciStrictMode
+	CopyMem(Stub + ISOLATED_USER_MODE_VALUE_OFFSET, &Value, sizeof(Value));
+
+	CopyWpMem((VOID*)CaseStart, Stub, sizeof(Stub));
+	PRINT_KERNEL_PATCH_MSG(L"    Patched ExpQuerySystemInformation(A5) [RVA: 0x%X].\r\n",
+		(UINT32)(CaseStart - ImageBase));
+	return EFI_SUCCESS;
+}
 
 //
 // Defuses PatchGuard initialization routines before execution is transferred to the kernel.
@@ -516,7 +682,8 @@ DisableDSE(
 	IN UINT16 BuildNumber
 	)
 {
-	if (BypassType == DSE_DISABLE_NONE)
+	// VBS emulation also needs the CI query patch, so do not bail out when only that is requested.
+	if (BypassType == DSE_DISABLE_NONE && gDriverConfig.FakeVbs == 0)
 		return EFI_INVALID_PARAMETER;
 
 	CONST UINT32 PageSizeOfRawData = PageSection->SizeOfRawData;
@@ -786,7 +953,7 @@ DisableDSE(
 
 	// SeValidateImageData *must* be patched on Windows Vista and 7 regardless of the DSE bypass method.
 	// On Windows >= 8, again require DSE_DISABLE_AT_BOOT to do anything as it is otherwise harmless.
-	if (BuildNumber < 9200)
+	if (BuildNumber < 9200 && BypassType != DSE_DISABLE_NONE)
 		SetWpMem(SeValidateImageDataJzAddress, sizeof(UINT8), 0xEB);									// jmp
 	else if (BypassType == DSE_DISABLE_AT_BOOT)
 	{
@@ -794,7 +961,7 @@ DisableDSE(
 		CopyWpMem(SeValidateImageDataMovEaxAddress + 1 /*skip existing mov*/, &Zero, sizeof(Zero));		// mov eax, 0
 	}
 
-	if (BuildNumber >= 16299 && BypassType == DSE_DISABLE_AT_BOOT)
+	if (BuildNumber >= 16299 && (BypassType == DSE_DISABLE_AT_BOOT || gDriverConfig.FakeVbs != 0))
 	{
 		// We are on RS3 or higher. If we can find and patch SeCodeIntegrityQueryInformation, great.
 		// But DSE has been disabled at this point, so success will be returned regardless.
@@ -811,7 +978,17 @@ DisableDSE(
 		}
 		else
 		{
-			CopyMem(Found, SeCodeIntegrityQueryInformationPatch, sizeof(SeCodeIntegrityQueryInformationPatch));
+			UINT8 Patch[sizeof(SeCodeIntegrityQueryInformationPatchTemplate)];
+			CopyMem(Patch, SeCodeIntegrityQueryInformationPatchTemplate, sizeof(Patch));
+
+			// Report the observed Windows 11 options, plus the HVCI bits when VBS is being faked.
+			UINT32 Options = 1;
+			if (gDriverConfig.FakeVbs != 0)
+				Options = SECI_OPTIONS_BASE |
+					(gDriverConfig.FakeVbs == 2 ? SECI_OPTIONS_HVCI_AUDIT : SECI_OPTIONS_HVCI_STRICT);
+			CopyMem(Patch + SECI_OPTIONS_IMMEDIATE_OFFSET, &Options, sizeof(Options));
+
+			CopyMem(Found, Patch, sizeof(Patch));
 			PRINT_KERNEL_PATCH_MSG(L"\r\nPatched SeCodeIntegrityQueryInformation [RVA: 0x%X].\r\n", (UINT32)(Found - ImageBase));
 		}
 	}
@@ -897,7 +1074,8 @@ PatchNtoskrnl(
 	PRINT_KERNEL_PATCH_MSG(L"\r\n[PatchNtoskrnl] Successfully disabled PatchGuard.\r\n");
 
 	if (gDriverConfig.DseBypassMethod == DSE_DISABLE_AT_BOOT ||
-		(BuildNumber < 9200 && gDriverConfig.DseBypassMethod != DSE_DISABLE_NONE))
+		(BuildNumber < 9200 && gDriverConfig.DseBypassMethod != DSE_DISABLE_NONE) ||
+		gDriverConfig.FakeVbs != 0)
 	{
 		// Patch PAGE section to disable DSE at boot, or (on Windows Vista/7) to allow the SetVariable hook to be safely used more than once
 		PRINT_KERNEL_PATCH_MSG(L"[PatchNtoskrnl] %S... [PAGE RVA: 0x%X - 0x%X]\r\n",
@@ -913,6 +1091,18 @@ PatchNtoskrnl(
 
 		if (gDriverConfig.DseBypassMethod == DSE_DISABLE_AT_BOOT)
 			PRINT_KERNEL_PATCH_MSG(L"\r\n[PatchNtoskrnl] Successfully disabled DSE.\r\n");
+	}
+
+	if (gDriverConfig.FakeVbs != 0)
+	{
+		PRINT_KERNEL_PATCH_MSG(L"[PatchNtoskrnl] Emulating VBS/HVCI state (%s)...\r\n",
+			gDriverConfig.FakeVbs == 2 ? L"audit" : L"enforced");
+		CONST EFI_STATUS VbsStatus = FakeIsolatedUserModeInformation(ImageBase, NtHeaders, gDriverConfig.FakeVbs);
+		if (EFI_ERROR(VbsStatus))
+			PRINT_KERNEL_PATCH_MSG(L"    WARNING: could not patch the VBS query case: %llx (%r).\r\n", VbsStatus, VbsStatus);
+		CONST EFI_STATUS HvStatus = FakeHypervisorInformation(ImageBase, NtHeaders);
+		if (EFI_ERROR(HvStatus))
+			PRINT_KERNEL_PATCH_MSG(L"    WARNING: could not patch the hypervisor query: %llx (%r).\r\n", HvStatus, HvStatus);
 	}
 
 	return Status;

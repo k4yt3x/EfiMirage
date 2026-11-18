@@ -36,6 +36,17 @@
 STATIC EFI_GET_VARIABLE mOriginalGetVariable = NULL;
 
 //
+// winload.efi reads VbsPolicyDisabled to decide whether VBS may start. The driver writes it so VBS
+// stays off and the SetVariable backdoor keeps working - which any administrator could read back
+// with GetFirmwareEnvironmentVariableExW, revealing the emulation. Once boot services are gone,
+// winload has long since read it, so report it as absent from then on.
+//
+STATIC CONST EFI_GUID mMicrosoftVendorGuid = {
+	0x77fa9abd, 0x0359, 0x4d32, { 0xbd, 0x60, 0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b }
+};
+STATIC CONST CHAR16 mVbsPolicyDisabledName[] = L"VbsPolicyDisabled";
+
+//
 // Whether the hook is in the table. Tracked separately from mOriginalGetVariable because the
 // hook is already installed by the time that pointer is known to be usable.
 //
@@ -147,6 +158,17 @@ HookedGetVariable(
 	)
 {
 	ASSERT(mOriginalGetVariable != NULL);
+
+	// Hide the VBS policy variable at runtime; winload has already consumed it by then.
+	if (gDriverConfig.FakeVbs != 0 && gEfiAtRuntime &&
+		VariableName != NULL && VariableName[0] != CHAR_NULL && VendorGuid != NULL &&
+		CompareGuid(VendorGuid, (EFI_GUID*)&mMicrosoftVendorGuid) &&
+		StrnCmp(VariableName, mVbsPolicyDisabledName, (sizeof(mVbsPolicyDisabledName) / sizeof(CHAR16)) - 1) == 0)
+	{
+		if (DataSize != NULL)
+			*DataSize = 0;
+		return EFI_NOT_FOUND;
+	}
 
 	// Only answer while the feature is on and the firmware variable would be readable by this caller.
 	// SecureBoot and SetupMode are always present on UEFI 2.3.1+ and are marked boot service + runtime,

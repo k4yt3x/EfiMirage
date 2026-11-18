@@ -2,6 +2,11 @@
 #include "EfiCompat.h"
 #include <ntstatus.h>
 #include <Guid/GlobalVariable.h>
+#include <Protocol/EfiMirage.h>
+
+// Defined in EfiDSEFix.cpp; EFI_GUID is GUID here, so the C++ type matches.
+extern EFI_GUID gEfiMirageStateVariableGuid;
+extern EFI_GUID gMicrosoftVendorGuid;
 
 #ifndef KEY_QUERY_VALUE
 #define KEY_QUERY_VALUE 0x0001
@@ -249,6 +254,192 @@ ReadSecureBootRegistryState(
 
 	RtlCopyMemory(Value, Data.Information.Data, sizeof(ULONG));
 	return STATUS_SUCCESS;
+}
+
+// Generic single-DWORD registry read; the CI state key is volatile and may be absent.
+static
+NTSTATUS
+ReadRegistryDword(
+	_In_ PCWSTR KeyPath,
+	_In_ PCWSTR ValueName,
+	_Out_ PULONG Value
+	)
+{
+	*Value = 0;
+
+	UNICODE_STRING Path;
+	RtlInitUnicodeString(&Path, KeyPath);
+	OBJECT_ATTRIBUTES Attributes;
+	InitializeObjectAttributes(&Attributes, &Path, OBJ_CASE_INSENSITIVE, nullptr, nullptr);
+
+	HANDLE Key = nullptr;
+	NTSTATUS Status = NtOpenKey(&Key, KEY_QUERY_VALUE, &Attributes);
+	if (!NT_SUCCESS(Status))
+		return Status;
+
+	UNICODE_STRING Name;
+	RtlInitUnicodeString(&Name, ValueName);
+
+	union
+	{
+		KEY_VALUE_PARTIAL_INFORMATION Information;
+		UCHAR Buffer[sizeof(KEY_VALUE_PARTIAL_INFORMATION) + sizeof(ULONG)];
+	} Data = {};
+	ULONG ResultLength = 0;
+	Status = NtQueryValueKey(Key, &Name, KeyValuePartialInformation, &Data, sizeof(Data), &ResultLength);
+	NtClose(Key);
+	if (!NT_SUCCESS(Status))
+		return Status;
+	if (Data.Information.Type != REG_DWORD || Data.Information.DataLength != sizeof(ULONG))
+		return STATUS_OBJECT_TYPE_MISMATCH;
+
+	*Value = *reinterpret_cast<PULONG>(Data.Information.Data);
+	return STATUS_SUCCESS;
+}
+
+static
+VOID
+PrintCiOptions(
+	_In_ ULONG Options
+	)
+{
+	static const struct { ULONG Mask; PCWCHAR Name; } Bits[] = {
+		{ 0x00000001, L"ENABLED" }, { 0x00000002, L"TESTSIGN" },
+		{ 0x00000004, L"UMCI_ENABLED" }, { 0x00000008, L"UMCI_AUDIT" },
+		{ 0x00000400, L"HVCI_KMCI_ENABLED" }, { 0x00000800, L"HVCI_KMCI_AUDIT" },
+		{ 0x00001000, L"HVCI_KMCI_STRICT" }, { 0x00002000, L"HVCI_IUM_ENABLED" },
+		{ 0x00004000, L"WHQL_ENFORCEMENT" }, { 0x00008000, L"WHQL_AUDIT" },
+	};
+	for (ULONG i = 0; i < ARRAYSIZE(Bits); ++i)
+	{
+		if ((Options & Bits[i].Mask) != 0)
+			Printf(L"%ls ", Bits[i].Name);
+	}
+}
+
+//
+// Prints every surface that reports VBS/HVCI state, so a faked state can be compared against a
+// real one line by line. See docs/vbs.md.
+//
+NTSTATUS
+ReportVbsState(
+	)
+{
+	SYSTEM_CODEINTEGRITY_INFORMATION Ci = { sizeof(SYSTEM_CODEINTEGRITY_INFORMATION) };
+	NTSTATUS Status = NtQuerySystemInformation(SystemCodeIntegrityInformation, &Ci, sizeof(Ci), nullptr);
+	if (NT_SUCCESS(Status))
+	{
+		Printf(L"SystemCodeIntegrityInformation:      0x%08lX [", Ci.CodeIntegrityOptions);
+		PrintCiOptions(Ci.CodeIntegrityOptions);
+		Printf(L"]\n");
+	}
+	else
+	{
+		Printf(L"SystemCodeIntegrityInformation:      error 0x%08lX\n", Status);
+	}
+
+	SYSTEM_CODEINTEGRITYPOLICY_INFORMATION Policy = {};
+	Status = NtQuerySystemInformation(SystemCodeIntegrityPolicyInformation, &Policy, sizeof(Policy), nullptr);
+	if (NT_SUCCESS(Status))
+		Printf(L"SystemCodeIntegrityPolicyInformation: options 0x%08lX, hvci 0x%08lX\n", Policy.Options, Policy.HVCIOptions);
+	else
+		Printf(L"SystemCodeIntegrityPolicyInformation: error 0x%08lX\n", Status);
+
+	SYSTEM_ISOLATED_USER_MODE_INFORMATION Ium = {};
+	Status = NtQuerySystemInformation(SystemIsolatedUserModeInformation, &Ium, sizeof(Ium), nullptr);
+	if (NT_SUCCESS(Status))
+	{
+		Printf(L"SystemIsolatedUserModeInformation:   secure kernel %u, hvci %u, strict %u, fw page %u, key %u\n",
+			Ium.SecureKernelRunning, Ium.HvciEnabled, Ium.HvciStrictMode, Ium.FirmwarePageProtection, Ium.EncryptionKeyAvailable);
+	}
+	else
+	{
+		Printf(L"SystemIsolatedUserModeInformation:   error 0x%08lX\n", Status);
+	}
+
+	ULONG HvciState = ULONG_MAX;
+	if (NT_SUCCESS(ReadRegistryDword(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\CI\\State",
+									L"HVCIEnabled", &HvciState)))
+		Printf(L"CI\\State\\HVCIEnabled:               %lu\n", HvciState);
+	else
+		Printf(L"CI\\State\\HVCIEnabled:               (absent)\n");
+
+	UNICODE_STRING PolicyName;
+	RtlInitUnicodeString(&PolicyName, L"VbsPolicyDisabled");
+	UCHAR PolicyValue = 0;
+	ULONG PolicySize = sizeof(PolicyValue);
+	ULONG PolicyAttributes = 0;
+	Status = NtQuerySystemEnvironmentValueEx(&PolicyName,
+											const_cast<LPGUID>(&gMicrosoftVendorGuid),
+											&PolicyValue,
+											&PolicySize,
+											&PolicyAttributes);
+	if (NT_SUCCESS(Status))
+		Printf(L"EFI VbsPolicyDisabled:               %u (visible!)\n", PolicyValue);
+	else
+		Printf(L"EFI VbsPolicyDisabled:               error 0x%08lX\n", Status);
+
+	EFIMIRAGE_STATE_DATA State = {};
+	UNICODE_STRING StateName;
+	RtlInitUnicodeString(&StateName, EFIMIRAGE_STATE_VARIABLE_NAME);
+	ULONG StateSize = sizeof(State);
+	ULONG StateAttributes = 0;
+	Status = NtQuerySystemEnvironmentValueEx(&StateName,
+											const_cast<LPGUID>(&gEfiMirageStateVariableGuid),
+											&State,
+											&StateSize,
+											&StateAttributes);
+	if (NT_SUCCESS(Status) && StateSize == sizeof(State) && State.Magic == EFIMIRAGE_STATE_MAGIC)
+		Printf(L"EfiMirage state:                     flags 0x%lX (fake VBS %u)\n",
+			State.Flags, (State.Flags & EFIMIRAGE_STATE_FLAG_FAKE_VBS) != 0);
+	else
+		Printf(L"EfiMirage state:                     not present\n");
+
+	return STATUS_SUCCESS;
+}
+
+//
+// Puts the registry back into "VBS and memory integrity configured" state. Windows clears these
+// keys itself when VBS fails to start (which it does whenever the driver keeps VbsPolicyDisabled
+// set), so they have to be restored at runtime. The CI state key is what memory integrity
+// actually reports while it runs; creating it here is what a real HVCI boot does.
+//
+NTSTATUS
+ApplyVbsState(
+	)
+{
+	CONST ULONG One = 1;
+	CONST PWCHAR DeviceGuard = const_cast<PWCHAR>(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\DeviceGuard");
+	CONST PWCHAR Scenario = const_cast<PWCHAR>(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity");
+	CONST PWCHAR CiState = const_cast<PWCHAR>(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\CI\\State");
+
+	struct
+	{
+		PCWSTR Path;
+		PCWSTR Value;
+	} Settings[] =
+	{
+		{ DeviceGuard, L"EnableVirtualizationBasedSecurity" },
+		{ DeviceGuard, L"RequirePlatformSecurityFeatures" },
+		{ Scenario,    L"Enabled" },
+		{ CiState,     L"HVCIEnabled" },
+	};
+
+	NTSTATUS FirstError = STATUS_SUCCESS;
+	for (ULONG i = 0; i < ARRAYSIZE(Settings); ++i)
+	{
+		CONST NTSTATUS Status = RtlWriteRegistryValue(RTL_REGISTRY_ABSOLUTE,
+													Settings[i].Path,
+													Settings[i].Value,
+													REG_DWORD,
+													const_cast<PULONG>(&One),
+													sizeof(One));
+		if (!NT_SUCCESS(Status) && NT_SUCCESS(FirstError))
+			FirstError = Status;
+		Printf(L"  %ls = 1: %ls\n", Settings[i].Value, NT_SUCCESS(Status) ? L"ok" : L"failed");
+	}
+
+	return FirstError;
 }
 
 //

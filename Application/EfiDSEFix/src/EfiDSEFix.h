@@ -41,6 +41,14 @@ NTSTATUS
 ReportSecureBootState(
 	);
 
+NTSTATUS
+ReportVbsState(
+	);
+
+NTSTATUS
+ApplyVbsState(
+	);
+
 // pe.cpp
 NTSTATUS
 MapFileSectionView(

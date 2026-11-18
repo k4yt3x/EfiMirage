@@ -6,6 +6,8 @@
 #include <Protocol/EfiMirage.h>
 
 EFI_GUID gEfiGlobalVariableGuid = EFI_GLOBAL_VARIABLE;
+EFI_GUID gEfiMirageStateVariableGuid = EFIMIRAGE_STATE_VARIABLE_GUID;
+EFI_GUID gMicrosoftVendorGuid = { 0x77fa9abd, 0x0359, 0x4d32, { 0xbd, 0x60, 0x28, 0xf4, 0xe7, 0x8f, 0x78, 0x4b } };
 
 static
 NTSTATUS
@@ -267,11 +269,45 @@ Exit:
 	return Status;
 }
 
+//
+// The driver records what this boot emulates in a volatile EFI variable. Checking it keeps the
+// backdoor usable while VBS is only being *reported* as running: the sysinfo surfaces then say VBS
+// is on, which would otherwise make this tool refuse to touch g_CiOptions.
+//
+static
+BOOLEAN
+IsEmulationActive(
+	_In_ UINT32 Flag
+	)
+{
+	UNICODE_STRING Name;
+	RtlInitUnicodeString(&Name, EFIMIRAGE_STATE_VARIABLE_NAME);
+
+	EFIMIRAGE_STATE_DATA State = {};
+	ULONG Size = sizeof(State);
+	ULONG Attributes = 0;
+	CONST NTSTATUS Status = NtQuerySystemEnvironmentValueEx(&Name,
+														const_cast<LPGUID>(&gEfiMirageStateVariableGuid),
+														&State,
+														&Size,
+														&Attributes);
+	if (!NT_SUCCESS(Status) || Size != sizeof(State))
+		return FALSE;
+	if (State.Magic != EFIMIRAGE_STATE_MAGIC || State.Version != EFIMIRAGE_STATE_VERSION)
+		return FALSE;
+
+	return (State.Flags & Flag) != 0;
+}
+
 static
 BOOLEAN
 IsVbsEnabled(
 	)
 {
+	// A VBS state that this boot is only emulating does not block kernel memory writes.
+	if (IsEmulationActive(EFIMIRAGE_STATE_FLAG_FAKE_VBS))
+		return FALSE;
+
 	SYSTEM_CODEINTEGRITY_INFORMATION CodeIntegrityInfo = { sizeof(SYSTEM_CODEINTEGRITY_INFORMATION) };
 	NTSTATUS Status = NtQuerySystemInformation(SystemCodeIntegrityInformation,
 												&CodeIntegrityInfo,

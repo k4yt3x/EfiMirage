@@ -606,6 +606,18 @@ LoadConfigurationFile(
 					Print(L"[LOADER] Invalid FakeSecureBoot value \"%s\"; keeping %u.\r\n",
 						Value, (UINTN)ConfigData->FakeSecureBoot);
 			}
+			else if (EqualsIgnoreCase(Key, L"FakeVbs"))
+			{
+				if (EqualsIgnoreCase(Value, L"0") || EqualsIgnoreCase(Value, L"off") || EqualsIgnoreCase(Value, L"no"))
+					ConfigData->FakeVbs = 0;
+				else if (EqualsIgnoreCase(Value, L"1") || EqualsIgnoreCase(Value, L"strict") || EqualsIgnoreCase(Value, L"yes"))
+					ConfigData->FakeVbs = 1;
+				else if (EqualsIgnoreCase(Value, L"2") || EqualsIgnoreCase(Value, L"audit"))
+					ConfigData->FakeVbs = 2;
+				else
+					Print(L"[LOADER] Invalid FakeVbs value \"%s\"; keeping %u.\r\n",
+						Value, (UINTN)ConfigData->FakeVbs);
+			}
 			else
 			{
 				Print(L"[LOADER] Unknown configuration key \"%s\"; ignored.\r\n", Key);
@@ -742,7 +754,8 @@ StartEfiMirage(
 		DSE_DISABLE_SETVARIABLE_HOOK,
 		FALSE,
 		TRUE,
-		{ 0, 0 }
+		0,
+		{ 0, 0, 0 }
 	};
 	CONST BOOLEAN ConfiguredFromFile = LoadConfigurationFile(&ConfigData);
 
@@ -777,6 +790,14 @@ StartEfiMirage(
 														sizeof(NoYes) / sizeof(UINT16),
 														BooleanDefault);
 
+		Print(L"Report VBS and memory integrity as enabled and running (current: %u)?\n"
+			L"    [0] No (default)\r\n    [1] Yes, HVCI enforced\r\n    [2] Yes, HVCI audit\r\n    ",
+			(UINTN)ConfigData.FakeVbs);
+		CONST UINT16 AcceptedVbs[] = { L'0', L'1', L'2' };
+		CONST UINT16 SelectedFakeVbs = PromptInput(AcceptedVbs,
+												sizeof(AcceptedVbs) / sizeof(UINT16),
+												(UINT16)(L'0' + ConfigData.FakeVbs));
+
 		switch (SelectedDseBypass)
 		{
 		case L'1':
@@ -792,6 +813,7 @@ StartEfiMirage(
 		}
 		ConfigData.WaitForKeyPress = (BOOLEAN)(SelectedWaitForKeyPress == L'2');
 		ConfigData.FakeSecureBoot = (BOOLEAN)(SelectedFakeSecureBoot == L'2');
+		ConfigData.FakeVbs = (UINT8)(SelectedFakeVbs - L'0');
 	}
 
 	if (ConfiguredFromFile || InteractiveConfiguration)
