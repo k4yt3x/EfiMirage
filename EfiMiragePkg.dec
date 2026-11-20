@@ -2,7 +2,7 @@
   DEC_SPECIFICATION              = 0x00010019
   PACKAGE_NAME                   = EfiMiragePkg
   PACKAGE_GUID                   = 6BFA833B-A9DF-490D-AF7E-7F92A80E3F9A
-  PACKAGE_VERSION                = 2.2.0
+  PACKAGE_VERSION                = 2.2.1
 
 [Includes]
   Include

@@ -45,7 +45,7 @@ The values are the measured output of Windows 11 26100.9974 with memory integrit
 ```ini
 # \EFI\EfiMirage\EfiMirage.cfg
 FakeVbs = 1        # 0 off, 1 HVCI enforced (default), 2 HVCI audit
-FakeDma = 1        # 0 off (default), 1 report Kernel DMA Protection
+FakeDma = 1        # 0 off, 1 report Kernel DMA Protection (default)
 ```
 
 or press `HOME` in the loader and answer the VBS and DMA questions. `Configure()` accepts both
@@ -57,7 +57,7 @@ running, CPUID vendor, `SystemHypervisorInformation`, and the `AvailableSecurity
 
 ## Kernel DMA Protection
 
-`FakeDma = 1` makes the two queries that carry DMA-protection state report it as present:
+`FakeDma` is on by default and makes the two queries that carry DMA-protection state report it as present:
 
 - `SystemDmaProtectionInformation` (0xA9) byte 0 feeds
   `Win32_DeviceGuard.AvailableSecurityProperties` value 3.
@@ -86,7 +86,7 @@ both kernel VBS queries report HVCI. The variable is volatile and never written 
 
 ## Measured results
 
-Windows 11 26100.9974, VBS genuinely off, `FakeVbs = 1, FakeDma = 0`:
+Windows 11 26100.9974, VBS genuinely off, `FakeVbs = 1, FakeDma = 0` (explicitly disabled):
 
 | Surface | Real HVCI machine | EfiMirage |
 |---|---|---|

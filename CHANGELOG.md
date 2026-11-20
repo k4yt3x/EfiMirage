@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-11-20
+
+### Changed
+
+- Kernel DMA Protection emulation is now on by default.
+
 ## [2.2.0] - 2026-11-20
 
 ### Added

@@ -3,7 +3,7 @@
   BASE_NAME                      = Loader
   FILE_GUID                      = FADCFFF6-E60C-4684-A241-B203D6E6686D
   MODULE_TYPE                    = UEFI_APPLICATION
-  VERSION_STRING                 = 2.2.0
+  VERSION_STRING                 = 2.2.1
 
   ENTRY_POINT                    = UefiMain
 

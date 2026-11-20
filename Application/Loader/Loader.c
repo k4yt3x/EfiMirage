@@ -763,7 +763,7 @@ StartEfiMirage(
 		FALSE,
 		TRUE,
 		1,
-		0,
+		1,
 		{ 0, 0 }
 	};
 	CONST BOOLEAN ConfiguredFromFile = LoadConfigurationFile(&ConfigData);

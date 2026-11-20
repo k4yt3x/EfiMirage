@@ -61,7 +61,7 @@ DseBypass = hook        # hook | boot | none
 WaitForKeyPress = 0
 FakeSecureBoot = 0      # omit to keep the default (on)
 FakeVbs = 1             # 0 off | 1 HVCI enforced (default) | 2 HVCI audit
-FakeDma = 0             # 0 off (default) | 1 report DMA protection
+FakeDma = 1             # 0 off | 1 report DMA protection (default)
 ```
 
 Unknown keys and unknown values are reported on screen and ignored, so an old config keeps

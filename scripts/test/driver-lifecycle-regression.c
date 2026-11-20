@@ -515,13 +515,14 @@ int main(int argc, char** argv)
 	else if (strcmp(Case, "configuration-version") == 0)
 	{
 		EFIMIRAGE_CONFIGURATION_DATA Config = gDriverConfig;
+		CONST UINT8 InitialFakeDma = gDriverConfig.FakeDma;
 		Config.Version = 0x100; // 2.1.0 treated FakeDma as reserved.
-		Config.FakeDma = 1;
+		Config.FakeDma = (UINT8)!InitialFakeDma;
 		CHECK(DriverConfigure(&Config) == EFI_INCOMPATIBLE_VERSION);
-		CHECK(gDriverConfig.FakeDma == 0);
+		CHECK(gDriverConfig.FakeDma == InitialFakeDma);
 		Config.Version = EFIMIRAGE_CONFIGURATION_DATA_VERSION;
 		CHECK(DriverConfigure(&Config) == EFI_SUCCESS);
-		CHECK(gDriverConfig.FakeDma == 1);
+		CHECK(gDriverConfig.FakeDma == !InitialFakeDma);
 		CHECK(EfiMirageUnload(gImageHandle) == EFI_SUCCESS);
 		CheckUnloaded();
 	}

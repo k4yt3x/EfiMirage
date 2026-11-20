@@ -150,7 +150,7 @@ EFIMIRAGE_CONFIGURATION_DATA gDriverConfig = {
 	FALSE,									// WaitForKeyPress
 	TRUE,									// FakeSecureBoot
 	1,										// FakeVbs
-	0,										// FakeDma
+	1,										// FakeDma
 	{ 0, 0 }								// Reserved
 };
 

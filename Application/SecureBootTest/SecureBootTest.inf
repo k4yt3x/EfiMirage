@@ -3,7 +3,7 @@
   BASE_NAME                      = SecureBootTest
   FILE_GUID                      = 3F0F1D7E-6C1B-4C01-9E8A-2B7C5D4A9E31
   MODULE_TYPE                    = UEFI_APPLICATION
-  VERSION_STRING                 = 2.2.0
+  VERSION_STRING                 = 2.2.1
   ENTRY_POINT                    = UefiMain
 
 [Sources]
