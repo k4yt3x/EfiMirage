@@ -60,7 +60,7 @@ changing its keys or values. There is **no fallback** to the old path. See the f
 DseBypass = hook        # hook | boot | none
 WaitForKeyPress = 0
 FakeSecureBoot = 0      # omit to keep the default (on)
-FakeVbs = 1             # 0 off (default) | 1 HVCI enforced | 2 HVCI audit
+FakeVbs = 1             # 0 off | 1 HVCI enforced (default) | 2 HVCI audit
 ```
 
 Unknown keys and unknown values are reported on screen and ignored, so an old config keeps

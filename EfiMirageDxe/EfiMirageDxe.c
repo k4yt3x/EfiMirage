@@ -149,7 +149,7 @@ EFIMIRAGE_CONFIGURATION_DATA gDriverConfig = {
 	DSE_DISABLE_SETVARIABLE_HOOK,			// DseBypassMethod
 	FALSE,									// WaitForKeyPress
 	TRUE,									// FakeSecureBoot
-	0,										// FakeVbs
+	1,										// FakeVbs
 	{ 0, 0, 0 }								// Reserved
 };
 

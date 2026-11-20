@@ -157,7 +157,7 @@ typedef struct _EFIMIRAGE_CONFIGURATION_DATA {
 	// 0 = off, 1 = HVCI enforced, 2 = HVCI audit. The kernel patches only change what
 	// NtQuerySystemInformation reports; VBS itself stays off so the SetVariable backdoor keeps
 	// working. See docs/vbs.md for the surfaces this covers and the ones it cannot.
-	// Default: 0
+	// Default: 1
 	//
 	UINT8 FakeVbs;
 

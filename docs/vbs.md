@@ -39,11 +39,11 @@ The values are the measured output of Windows 11 26300 with memory integrity on;
   `VbsPolicyDisabled` then prevents.
 - **TPM measurements.** The boot was measured without VBS; PCRs and the event log say so.
 
-## Enabling it
+## Configuring it
 
 ```ini
 # \EFI\EfiMirage\EfiMirage.cfg
-FakeVbs = 1        # 0 off (default), 1 HVCI enforced, 2 HVCI audit
+FakeVbs = 1        # 0 off, 1 HVCI enforced (default), 2 HVCI audit
 ```
 
 or press `HOME` in the loader and answer the VBS question. `Configure()` also accepts it through

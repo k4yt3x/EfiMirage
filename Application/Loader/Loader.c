@@ -754,7 +754,7 @@ StartEfiMirage(
 		DSE_DISABLE_SETVARIABLE_HOOK,
 		FALSE,
 		TRUE,
-		0,
+		1,
 		{ 0, 0, 0 }
 	};
 	CONST BOOLEAN ConfiguredFromFile = LoadConfigurationFile(&ConfigData);
@@ -791,7 +791,7 @@ StartEfiMirage(
 														BooleanDefault);
 
 		Print(L"Report VBS and memory integrity as enabled and running (current: %u)?\n"
-			L"    [0] No (default)\r\n    [1] Yes, HVCI enforced\r\n    [2] Yes, HVCI audit\r\n    ",
+			L"    [0] No\r\n    [1] Yes, HVCI enforced\r\n    [2] Yes, HVCI audit\r\n    ",
 			(UINTN)ConfigData.FakeVbs);
 		CONST UINT16 AcceptedVbs[] = { L'0', L'1', L'2' };
 		CONST UINT16 SelectedFakeVbs = PromptInput(AcceptedVbs,

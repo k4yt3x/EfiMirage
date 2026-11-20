@@ -4,7 +4,7 @@
 
 ### Added
 
-- VBS and memory integrity emulation, off by default and configurable per boot.
+- VBS and memory integrity emulation, on by default and configurable per boot.
 - `EfiDSEFix -v` reports VBS/HVCI surfaces; `-a` restores registry and CI state.
 - Release bundles include `install-vbs-task.ps1` to run `-a` at boot as SYSTEM.
 

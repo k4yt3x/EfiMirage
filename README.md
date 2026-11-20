@@ -11,7 +11,7 @@ emulation, unattended configuration, and a Linux build and test workflow.
 
 - In-memory patching of the Windows boot manager, loader, and kernel.
 - Secure Boot state emulation, enabled by default and configurable per boot.
-- VBS and memory-integrity state emulation, off by default and configurable per boot.
+- VBS and memory-integrity state emulation, on by default and configurable per boot.
 - A configurable UEFI loader and a Windows command-line utility.
 - Cross-compiled EFI and Windows binaries, verified bundles, regression tests, and OVMF tests.
 
