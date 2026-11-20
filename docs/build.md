@@ -72,9 +72,9 @@ its root; build logs are not release assets. Rerunning the workflow updates the 
 and replaces the same-named asset.
 
 Release notes come from the section of `CHANGELOG.md` whose version matches the tag exactly:
-`2.0.0` selects `## [2.0.0]`, not `[Unreleased]`, `[2.0.01]`, or `[v2.0.0]`. Missing, empty, or
+`2.2.0` selects `## [2.2.0]`, not `[Unreleased]`, `[2.2.01]`, or `[v2.2.0]`. Missing, empty, or
 duplicate version sections fail the release job before a GitHub Release is created. Preview the
-selection locally with `python3 scripts/release-notes.py -- 2.0.0`.
+selection locally with `python3 scripts/release-notes.py -- 2.2.0`.
 
 CI and build jobs use read-only repository permissions. Only the tag-only release job has
 `contents: write`, using the built-in `GITHUB_TOKEN`; no extra repository secrets are required.
@@ -87,12 +87,13 @@ machine. OVMF emulation and live Windows tests remain separate from these workfl
 1. Set the release version in `EfiMiragePkg.dec`, `EfiMiragePkg.dsc`, and the four project
    `.inf` files. Update both numeric and string versions in
    `Application/EfiDSEFix/src/resource.rc`; Windows numeric versions use four components.
-   Do not change UEFI specification, configuration-protocol, or dependency versions.
+   Do not change UEFI specification or dependency versions. Change the configuration-protocol
+   version only when its ABI or semantics change, as they do for `FakeDma` in 2.2.0.
 2. Move the changelog entries into a dated version section and leave an empty `[Unreleased]`
    section above it. Keep each entry on one line of at most 100 characters.
 3. Run `just build release`, `just verify release`, and `just test-emulation release`.
 4. Commit the release changes, then create an annotated tag matching the changelog version
-   (for example, `git tag -a 2.0.0 -m "Release 2.0.0"`). Push the commit and that tag to run CD.
+   (for example, `git tag -a 2.2.0 -m "Release 2.2.0"`). Push the commit and that tag to run CD.
 5. After CD succeeds, open the generated draft under **Releases**, review its changelog notes
    and attached `efimirage-x64.zip`, then publish it. No manual release creation or asset upload
    is needed.

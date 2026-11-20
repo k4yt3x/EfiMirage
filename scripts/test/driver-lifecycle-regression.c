@@ -512,6 +512,19 @@ int main(int argc, char** argv)
 			DriverConfigure(&Config);
 		CHECK(ResetCalled);
 	}
+	else if (strcmp(Case, "configuration-version") == 0)
+	{
+		EFIMIRAGE_CONFIGURATION_DATA Config = gDriverConfig;
+		Config.Version = 0x100; // 2.1.0 treated FakeDma as reserved.
+		Config.FakeDma = 1;
+		CHECK(DriverConfigure(&Config) == EFI_INCOMPATIBLE_VERSION);
+		CHECK(gDriverConfig.FakeDma == 0);
+		Config.Version = EFIMIRAGE_CONFIGURATION_DATA_VERSION;
+		CHECK(DriverConfigure(&Config) == EFI_SUCCESS);
+		CHECK(gDriverConfig.FakeDma == 1);
+		CHECK(EfiMirageUnload(gImageHandle) == EFI_SUCCESS);
+		CheckUnloaded();
+	}
 	else if (strcmp(Case, "vbs-state") == 0)
 	{
 		EFIMIRAGE_CONFIGURATION_DATA Config = gDriverConfig;

@@ -2,9 +2,15 @@
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-20
+
 ### Added
 
 - Kernel DMA Protection state emulation (`FakeDma`), off by default.
+
+### Changed
+
+- Pair the 2.2.0 loader and driver; configuration protocol is now 0x101.
 
 ## [2.1.0] - 2026-11-20
 

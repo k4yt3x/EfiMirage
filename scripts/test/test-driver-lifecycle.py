@@ -80,6 +80,9 @@ class DriverLifecycleTests(unittest.TestCase):
     def test_normal_unload_restores_startimage(self):
         self.run_case("normal-unload")
 
+    def test_old_configuration_version_rejected_before_fake_dma_is_applied(self):
+        self.run_case("configuration-version")
+
     def test_vbs_flag_needs_confirmed_policy_and_unload_clears_it(self):
         for fake_secure_boot in (False, True):
             with self.subTest(fake_secure_boot=fake_secure_boot):

@@ -17,10 +17,11 @@ Security app and the software on top of them read.
 | `SystemCodeIntegrityInformation` (0x67) | `0xF405` | `ENABLED \| UMCI \| WHQL \| HVCI_KMCI \| KVCI_STRICT \| HVCI_IUM`; audit mode reports `0xEC05` |
 | `SystemIsolatedUserModeInformation` (0xA5) | `37 10 01` | Secure Kernel running, HVCI enabled and strict, firmware page protection, VBS key available/persistent/TPM-bound |
 | `SystemCodeIntegrityPolicyInformation` (0xA4) | unchanged | on a real machine its `HVCIOptions` stays 0 while HVCI runs, so it is left alone |
-| `SystemVsmProtectionInformation` (0xA9) | unchanged | all zero on a real machine too |
+| `SystemDmaProtectionInformation` (0xA9) | byte 0 = 1 with `FakeDma=1` | unchanged otherwise; does not enable an IOMMU |
+| `SystemDmaGuardPolicyInformation` (0xCA) | byte 0 = 1 with `FakeDma=1` | unchanged otherwise; policy report only |
 | `VbsPolicyDisabled` EFI variable | hidden at runtime | `winload` still reads it before `ExitBootServices`, so VBS stays off |
 
-The values are the measured output of Windows 11 26300 with memory integrity on; see
+The values are the measured output of Windows 11 26100.9974 with memory integrity on; see
 `docs/vbs.md` history in the repository for the off/on diff.
 
 ## What is not changed
@@ -47,8 +48,8 @@ FakeVbs = 1        # 0 off, 1 HVCI enforced (default), 2 HVCI audit
 FakeDma = 1        # 0 off (default), 1 report Kernel DMA Protection
 ```
 
-or press `HOME` in the loader and answer the VBS question. `Configure()` also accepts it through
-`EFIMIRAGE_CONFIGURATION_DATA.FakeVbs`.
+or press `HOME` in the loader and answer the VBS and DMA questions. `Configure()` accepts both
+through `EFIMIRAGE_CONFIGURATION_DATA.FakeVbs` and `.FakeDma`.
 
 Keep `hypervisorlaunchtype auto` and a working Hyper-V installation: with the hypervisor really
 running, CPUID vendor, `SystemHypervisorInformation`, and the `AvailableSecurityProperties`
@@ -85,7 +86,7 @@ both kernel VBS queries report HVCI. The variable is volatile and never written 
 
 ## Measured results
 
-Windows 11 26300, VBS genuinely off, `FakeVbs = 1`:
+Windows 11 26100.9974, VBS genuinely off, `FakeVbs = 1, FakeDma = 0`:
 
 | Surface | Real HVCI machine | EfiMirage |
 |---|---|---|
@@ -99,7 +100,7 @@ Windows 11 26300, VBS genuinely off, `FakeVbs = 1`:
 | `g_CiOptions` | `0x1C006` | `0x1C006` (after `EfiDSEFix -a`) |
 | AvailableSecurityProperties | {1,2,4,5} | {2,4,5,8} |
 | `Secure System` process | present | absent |
-| `0xA9` | `00 00 00 00` | `00 00 00 01` (APIC virtualization; CPU property, not VBS) |
+| `0xA9` | `00 00 00 00` | first three bytes zero; last byte is host APIC virtualization |
 
 Windows clears `EnableVirtualizationBasedSecurity` and the HVCI scenario `Enabled` whenever VBS
 fails to start, which is every boot here, so those two keys have to be written again after each
@@ -128,12 +129,12 @@ not revert DeviceGuard configuration written by previous `-a` runs. A boot-start
   `NtCreateProcessEx` flag `0x800`; nothing running in EFI can.
 - **CPUID AccessVsm.** The hypervisor decides it. With `VbsPolicyDisabled` set, VBS is not
   launched and the bit stays clear.
-- **`0xA9`.** The structure is `DMA available/in use`, `MBEC`, `APIC virtualization`; the byte that
-  differs here is the last one and reflects the host CPU, not VBS.
+- **`0xA9` with `FakeDma=0`.** The last byte reflects the host CPU's APIC virtualization, not VBS.
+  `FakeDma=1` changes the first byte instead; it does not enable DMA remapping.
 
 ## Verifying
 
-`scripts/test/vbs-probe.ps1` prints every surface above. With the emulation on, the output should
-match a real memory-integrity machine for the sysinfo classes and WMI, and differ for the process
-list and CPUID. `g_CiOptions` differs until `-a` runs. `EfiDSEFix -v` prints the kernel-side
-values compactly.
+`scripts/test/vbs-probe.ps1` prints the VBS queries, `0xA9`, WMI, registry, and CPU state.
+With VBS emulation on, the output should match a real memory-integrity machine for its VBS
+queries and WMI, and differ for the process list and CPUID. Check msinfo32 for the `0xCA` DMA
+policy report. `g_CiOptions` differs until `-a` runs. `EfiDSEFix -v` reports VBS state compactly.

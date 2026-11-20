@@ -2,19 +2,46 @@
 
 import importlib.util
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
 import unittest
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "release-notes.py"
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = ROOT / "scripts/release-notes.py"
 SPEC = importlib.util.spec_from_file_location("release_notes", SCRIPT)
 release_notes = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(release_notes)
 
 
 class ReleaseNotesTests(unittest.TestCase):
+    def test_current_release_version_matches_all_product_metadata(self):
+        package = (ROOT / "EfiMiragePkg.dec").read_text()
+        match = re.search(r"(?m)^\s*PACKAGE_VERSION\s*=\s*(\d+\.\d+\.\d+)\s*$", package)
+        self.assertIsNotNone(match)
+        version = match.group(1)
+        self.assertTrue(release_notes.extract_notes((ROOT / "CHANGELOG.md").read_text(), version))
+
+        platform = (ROOT / "EfiMiragePkg.dsc").read_text()
+        self.assertRegex(platform, rf"(?m)^\s*PLATFORM_VERSION\s*=\s*{re.escape(version)}\s*$")
+        for name in ("EfiMirageDxe/EfiMirageDxe.inf", "Application/Loader/Loader.inf",
+                     "Application/SecureBootTest/SecureBootTest.inf",
+                     "Application/SecureBootRuntimeTest/SecureBootRuntimeTest.inf"):
+            with self.subTest(path=name):
+                self.assertRegex((ROOT / name).read_text(),
+                                 rf"(?m)^\s*VERSION_STRING\s*=\s*{re.escape(version)}\s*$")
+
+        resource = (ROOT / "Application/EfiDSEFix/src/resource.rc").read_text()
+        numeric = ",".join((*version.split("."), "0"))
+        for field in ("FILEVERSION", "PRODUCTVERSION"):
+            with self.subTest(field=field):
+                self.assertRegex(resource, rf"(?m)^\s*{field}\s+{numeric}\s*$")
+        for field in ("FileVersion", "ProductVersion"):
+            with self.subTest(field=field):
+                self.assertIn(f'VALUE "{field}", "{version}"', resource)
+
     def test_exact_section_excludes_unreleased_and_other_versions(self):
         changelog = """# Changelog
 

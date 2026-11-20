@@ -92,6 +92,19 @@ Report EfiMirage bugs in this repository's issue tracker, not the upstream EfiGu
   checked kernels. This should not be an issue as checked kernels are not generally useful without a
   kernel debugger attached, which disables PatchGuard.
 
+## Upgrading to 2.2.0
+
+Replace both `Loader.efi` and `EfiMirageDxe.efi` from the same 2.2.0 bundle, including when
+the driver is installed as a firmware driver entry. The configuration protocol now uses version
+`0x101` because `FakeDma` occupies a formerly reserved byte. A mixed-version loader and driver
+reject per-boot configuration rather than silently ignoring the new option. Without a config file
+or `HOME` prompt, the loader may not call `Configure()`, so mixed binaries can still boot with
+compiled-in defaults; replace both even in that case.
+
+If `Configure()` rejects the pair, the loader reports the error and continues after five seconds
+(press ESC to return to the firmware), so a headless boot falls back to the compiled-in defaults
+instead of waiting for a key.
+
 ## Migrating from EfiGuard
 
 The rename to EfiMirage changes public names and paths, not behavior or features.
@@ -117,7 +130,8 @@ For source integrations, use `EfiMirageDxe/`, `EfiMiragePkg.dec`, `EfiMiragePkg.
 Use `efimirage` as the repository slug. Renaming the hosted repository and updating
 clone remotes are separate from the source and build rename.
 
-The rename preserves GUID values, the configuration schema version, and structure layouts
-from this fork's pre-rename builds. The legacy backdoor variable string (`roodkcaBdrauGifE`,
-reversed `EfiGuardBackdoor`) and cookie (`0xDEADC0DE`) are also intentionally unchanged.
+The 2.0.0 rename preserved GUID values, the then-current configuration schema version, and
+structure layouts from this fork's pre-rename builds. The legacy backdoor variable string
+(`roodkcaBdrauGifE`, reversed `EfiGuardBackdoor`) and cookie (`0xDEADC0DE`) are also intentionally
+unchanged.
 These compatibility identifiers are not old configuration-path aliases.

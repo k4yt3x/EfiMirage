@@ -162,6 +162,9 @@ UefiMain(
 	ConfigureDriver(Protocol, DSE_DISABLE_NONE, TRUE,
 		EFIMIRAGE_CONFIGURATION_DATA_VERSION + 1, &ConfigureStatus);
 	Check(ConfigureStatus == EFI_INCOMPATIBLE_VERSION, L"wrong configuration version is refused");
+	// 2.1.0 called this byte Reserved; its configuration must not silently ignore FakeDma.
+	ConfigureDriver(Protocol, DSE_DISABLE_NONE, TRUE, 0x100, &ConfigureStatus);
+	Check(ConfigureStatus == EFI_INCOMPATIBLE_VERSION, L"2.1.0 configuration version is refused");
 
 	// An out-of-range DSE bypass method must be refused
 	ConfigureDriver(Protocol, (EFIMIRAGE_DSE_BYPASS_TYPE)99, TRUE,

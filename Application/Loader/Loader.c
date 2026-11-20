@@ -1126,9 +1126,9 @@ UefiMain(
 	if (EFI_ERROR(DriverStatus))
 	{
 		Print(L"\r\nERROR: driver load failed with status %llx (%r).\r\n"
-			L"Press any key to continue, or press ESC to return to the firmware or shell.\r\n",
+			L"Press any key to continue, press ESC to return to the firmware or shell, or wait five seconds.\r\n",
 			DriverStatus, DriverStatus);
-		if (WaitForKey() == SCAN_ESC)
+		if (WaitForKeyWithTimeout(5000) == SCAN_ESC)
 		{
 			gBS->Exit(gImageHandle, DriverStatus, 0, NULL);
 			return DriverStatus;

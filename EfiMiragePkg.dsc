@@ -1,7 +1,7 @@
 [Defines]
   PLATFORM_NAME                  = EfiMirage
   PLATFORM_GUID                  = C5ACE17D-FD90-44F7-847C-693ED2B8BEF9
-  PLATFORM_VERSION               = 2.0.0
+  PLATFORM_VERSION               = 2.2.0
   DSC_SPECIFICATION              = 0x0001001B
   OUTPUT_DIRECTORY               = Build/EfiMirage
   SUPPORTED_ARCHITECTURES        = X64
