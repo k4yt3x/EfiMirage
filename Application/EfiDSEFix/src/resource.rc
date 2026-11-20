@@ -28,10 +28,10 @@ BEGIN
 		BLOCK "040904b0"
 		BEGIN
 			VALUE "FileDescription", "EfiMirage DSE configuration utility"
-			VALUE "FileVersion", "2.0.0"
+			VALUE "FileVersion", "2.1.0"
 			VALUE "InternalName", "EfiDSEFix"
 			VALUE "ProductName", "EfiMirage"
-			VALUE "ProductVersion", "2.0.0"
+			VALUE "ProductVersion", "2.1.0"
 		END
 	END
 	BLOCK "VarFileInfo"

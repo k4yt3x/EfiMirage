@@ -3,7 +3,7 @@
   BASE_NAME                      = EfiMirageDxe
   FILE_GUID                      = 503682AC-F01E-4D10-AAE3-BE5A90A563E7
   MODULE_TYPE                    = DXE_RUNTIME_DRIVER
-  VERSION_STRING                 = 2.0.0
+  VERSION_STRING                 = 2.1.0
 
   ENTRY_POINT                    = EfiMirageInitialize
   UNLOAD_IMAGE                   = EfiMirageUnload
