@@ -480,7 +480,8 @@ UefiMain(
 		FALSE,
 		TRUE,
 		0,
-		{ 0, 0, 0 }
+		0,
+		{ 0, 0 }
 	};
 	Status = Protocol->Configure(&ConfigData);
 	Check(!EFI_ERROR(Status), L"emulation configured before leaving boot services");

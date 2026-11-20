@@ -105,7 +105,8 @@ ConfigureDriver(
 		FALSE,
 		FakeSecureBoot,
 		0,
-		{ 0, 0, 0 }
+		0,
+		{ 0, 0 }
 	};
 	*Status = Protocol->Configure(&ConfigData);
 }

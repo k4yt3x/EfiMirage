@@ -188,6 +188,131 @@ FakeHypervisorInformation(
 }
 
 //
+// Kernel DMA Protection is exposed through SystemDmaProtectionInformation (0xA9), whose first
+// byte says whether the firmware advertised DMA remapping (DMAR/IVRS). Every branch of the query
+// funnels into one memcpy, so the call is redirected to a stub that sets the first source byte to
+// 1 and then jumps to the original memcpy. Registers and control flow are untouched, and the stub
+// lives in the int3 padding after the query function rather than in an arbitrary code cave.
+//
+STATIC CONST UINT8 SigDmaCopyCall[] = {
+	0xE8, 0xCC, 0xCC, 0xCC, 0xCC,					// call memcpy
+	0xEB, 0x0B,										// jmp +0x0B
+	0x8B, 0xD8,										// mov ebx, eax
+	0x48, 0x8B, 0x74, 0x24, 0x28					// mov rsi, [rsp+0x28]
+};
+
+STATIC CONST UINT8 DmaStub[] = {
+	0xC6, 0x02, 0x01,								// mov byte ptr [rdx], 1
+	0xE9, 0x00, 0x00, 0x00, 0x00					// jmp memcpy
+};
+
+// msinfo32 and the Windows Security UI ask for SystemDmaGuardPolicyInformation (0xCA) and treat
+// a first byte of 1 as "Kernel DMA Protection: On". The query copies the helper's result byte;
+// the load is replaced with an immediate so every caller sees 1.
+STATIC CONST UINT8 SigDmaGuardPolicyByte[] = {
+	0x8A, 0x84, 0x24, 0xE0, 0x01, 0x00, 0x00,		// mov al, [rsp+0x1E0]
+	0x88, 0x07,										// mov [rdi], al
+	0xE9											// jmp ...
+};
+
+STATIC CONST UINT8 DmaGuardPolicyPatch[] = {
+	0xB0, 0x01, 0x90, 0x90, 0x90, 0x90, 0x90		// mov al, 1; nop x5
+};
+
+STATIC
+EFI_STATUS
+EFIAPI
+FakeDmaProtectionAvailable(
+	IN CONST UINT8* ImageBase,
+	IN PEFI_IMAGE_NT_HEADERS NtHeaders
+	)
+{
+	PEFI_IMAGE_SECTION_HEADER PageSection = NULL;
+	PEFI_IMAGE_SECTION_HEADER Section = IMAGE_FIRST_SECTION(NtHeaders);
+	for (UINT16 i = 0; i < NtHeaders->FileHeader.NumberOfSections; ++i)
+	{
+		CHAR8 SectionName[EFI_IMAGE_SIZEOF_SHORT_NAME + 1];
+		CopyMem(SectionName, Section->Name, EFI_IMAGE_SIZEOF_SHORT_NAME);
+		SectionName[EFI_IMAGE_SIZEOF_SHORT_NAME] = '\0';
+		if (AsciiStrCmp(SectionName, "PAGE") == 0)
+		{
+			PageSection = Section;
+			break;
+		}
+		Section++;
+	}
+	if (PageSection == NULL)
+	{
+		return EFI_NOT_FOUND;
+	}
+
+	VOID* Found = NULL;
+	CONST UINT8* CONST Base = ImageBase + PageSection->VirtualAddress;
+	CONST UINT32 Size = PageSection->SizeOfRawData;
+	CONST EFI_STATUS Status = FindPattern(SigDmaCopyCall, 0xCC, sizeof(SigDmaCopyCall),
+										Base, Size, &Found);
+	if (EFI_ERROR(Status))
+	{
+		return Status;
+	}
+
+	UINT8* CONST CopyCall = (UINT8*)Found;
+
+	VOID* GuardFound = NULL;
+	CONST EFI_STATUS GuardStatus = FindPattern(SigDmaGuardPolicyByte, 0xCC,
+											sizeof(SigDmaGuardPolicyByte), Base, Size, &GuardFound);
+	if (EFI_ERROR(GuardStatus))
+	{
+		return GuardStatus;
+	}
+	UINT8* CONST GuardByte = (UINT8*)GuardFound;
+
+	INT32 CopyRel = 0;
+	CopyMem(&CopyRel, CopyCall + 1, sizeof(CopyRel));
+	UINT8* CONST Memcpy = CopyCall + 5 + CopyRel;
+
+	// The stub goes into the int3 padding immediately after the query function, within 0x400
+	// bytes of the call. Scanning forward keeps it out of unrelated padding elsewhere in PAGE.
+	UINT8* Cave = NULL;
+	UINTN Run = 0;
+	CONST UINTN Start = (UINTN)(CopyCall - Base) + sizeof(SigDmaCopyCall);
+	CONST UINTN Limit = MIN(Start + (UINTN)0x400, Size);
+	for (UINTN i = Start; i < Limit; ++i)
+	{
+		if (Base[i] == 0xCC)
+		{
+			if (++Run == sizeof(DmaStub))
+			{
+				Cave = (UINT8*)Base + i + 1 - sizeof(DmaStub);
+				break;
+			}
+		}
+		else
+		{
+			Run = 0;
+		}
+	}
+	if (Cave == NULL)
+	{
+		return EFI_NOT_FOUND;
+	}
+
+	UINT8 Stub[sizeof(DmaStub)];
+	CopyMem(Stub, DmaStub, sizeof(Stub));
+	CONST INT32 JumpRel = (INT32)(Memcpy - (Cave + sizeof(Stub)));
+	CopyMem(Stub + 4, &JumpRel, sizeof(JumpRel));
+	CopyWpMem(Cave, Stub, sizeof(Stub));
+
+	CONST INT32 CallRel = (INT32)(Cave - (CopyCall + 5));
+	CopyWpMem(CopyCall + 1, &CallRel, sizeof(CallRel));
+	CopyWpMem(GuardByte, DmaGuardPolicyPatch, sizeof(DmaGuardPolicyPatch));
+
+	PRINT_KERNEL_PATCH_MSG(L"    Patched SystemDmaProtectionInformation(0xA9) [RVA: 0x%X, stub: 0x%X].\r\n",
+		(UINT32)(CopyCall - ImageBase), (UINT32)(Cave - ImageBase));
+	return EFI_SUCCESS;
+}
+
+//
 // Patches the SystemIsolatedUserModeInformation query so VBS/HVCI appear enabled and running.
 // Only the reported state changes; the kernel keeps behaving as if VBS were off, which is what
 // lets the SetVariable backdoor keep working.
@@ -1089,6 +1214,14 @@ PatchNtoskrnl(
 		CONST EFI_STATUS HvStatus = FakeHypervisorInformation(ImageBase, NtHeaders);
 		if (EFI_ERROR(HvStatus))
 			PRINT_KERNEL_PATCH_MSG(L"    WARNING: could not patch the hypervisor query: %llx (%r).\r\n", HvStatus, HvStatus);
+	}
+
+	if (gDriverConfig.FakeDma != 0)
+	{
+		PRINT_KERNEL_PATCH_MSG(L"[PatchNtoskrnl] Emulating Kernel DMA Protection availability...\r\n");
+		CONST EFI_STATUS DmaStatus = FakeDmaProtectionAvailable(ImageBase, NtHeaders);
+		if (EFI_ERROR(DmaStatus))
+			PRINT_KERNEL_PATCH_MSG(L"    WARNING: could not patch the DMA protection query: %llx (%r).\r\n", DmaStatus, DmaStatus);
 	}
 
 	if (gDriverConfig.DseBypassMethod == DSE_DISABLE_AT_BOOT ||

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Kernel DMA Protection state emulation (`FakeDma`), off by default.
+
 ## [2.1.0] - 2026-11-20
 
 ### Added

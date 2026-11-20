@@ -161,7 +161,15 @@ typedef struct _EFIMIRAGE_CONFIGURATION_DATA {
 	//
 	UINT8 FakeVbs;
 
-	UINT8 Reserved[3];
+	//
+	// Whether to report Kernel DMA Protection as available through
+	// SystemDmaProtectionInformation (0xA9). Only the reported byte changes; the kernel keeps
+	// using the real firmware tables.
+	// Default: 0
+	//
+	UINT8 FakeDma;
+
+	UINT8 Reserved[2];
 } EFIMIRAGE_CONFIGURATION_DATA;
 
 

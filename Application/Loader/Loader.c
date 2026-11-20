@@ -606,6 +606,14 @@ LoadConfigurationFile(
 					Print(L"[LOADER] Invalid FakeSecureBoot value \"%s\"; keeping %u.\r\n",
 						Value, (UINTN)ConfigData->FakeSecureBoot);
 			}
+			else if (EqualsIgnoreCase(Key, L"FakeDma"))
+			{
+				if (ParseConfigBoolean(Value, &Boolean))
+					ConfigData->FakeDma = Boolean;
+				else
+					Print(L"[LOADER] Invalid FakeDma value \"%s\"; keeping %u.\r\n",
+						Value, (UINTN)ConfigData->FakeDma);
+			}
 			else if (EqualsIgnoreCase(Key, L"FakeVbs"))
 			{
 				if (EqualsIgnoreCase(Value, L"0") || EqualsIgnoreCase(Value, L"off") || EqualsIgnoreCase(Value, L"no"))
@@ -755,7 +763,8 @@ StartEfiMirage(
 		FALSE,
 		TRUE,
 		1,
-		{ 0, 0, 0 }
+		0,
+		{ 0, 0 }
 	};
 	CONST BOOLEAN ConfiguredFromFile = LoadConfigurationFile(&ConfigData);
 
@@ -798,6 +807,13 @@ StartEfiMirage(
 												sizeof(AcceptedVbs) / sizeof(UINT16),
 												(UINT16)(L'0' + ConfigData.FakeVbs));
 
+		Print(L"Report Kernel DMA Protection as available (current: %s)?\n"
+			L"    [1] No\r\n    [2] Yes\r\n    ",
+			ConfigData.FakeDma ? L"Yes" : L"No");
+		CONST UINT16 SelectedFakeDma = PromptInput(NoYes,
+												sizeof(NoYes) / sizeof(UINT16),
+												ConfigData.FakeDma ? L'2' : L'1');
+
 		switch (SelectedDseBypass)
 		{
 		case L'1':
@@ -814,6 +830,7 @@ StartEfiMirage(
 		ConfigData.WaitForKeyPress = (BOOLEAN)(SelectedWaitForKeyPress == L'2');
 		ConfigData.FakeSecureBoot = (BOOLEAN)(SelectedFakeSecureBoot == L'2');
 		ConfigData.FakeVbs = (UINT8)(SelectedFakeVbs - L'0');
+		ConfigData.FakeDma = (UINT8)(SelectedFakeDma == L'2');
 	}
 
 	if (ConfiguredFromFile || InteractiveConfiguration)

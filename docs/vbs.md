@@ -44,6 +44,7 @@ The values are the measured output of Windows 11 26300 with memory integrity on;
 ```ini
 # \EFI\EfiMirage\EfiMirage.cfg
 FakeVbs = 1        # 0 off, 1 HVCI enforced (default), 2 HVCI audit
+FakeDma = 1        # 0 off (default), 1 report Kernel DMA Protection
 ```
 
 or press `HOME` in the loader and answer the VBS question. `Configure()` also accepts it through
@@ -52,6 +53,23 @@ or press `HOME` in the loader and answer the VBS question. `Configure()` also ac
 Keep `hypervisorlaunchtype auto` and a working Hyper-V installation: with the hypervisor really
 running, CPUID vendor, `SystemHypervisorInformation`, and the `AvailableSecurityProperties`
 "hypervisor support" entry all agree with a VBS machine. Without it they do not.
+
+## Kernel DMA Protection
+
+`FakeDma = 1` makes the two queries that carry DMA-protection state report it as present:
+
+- `SystemDmaProtectionInformation` (0xA9) byte 0 feeds
+  `Win32_DeviceGuard.AvailableSecurityProperties` value 3.
+- `SystemDmaGuardPolicyInformation` (0xCA) byte 0 feeds msinfo32's
+  "Kernel DMA Protection" row and the Windows Security memory-access-protection entry.
+
+Nothing else changes: no DMAR/IVRS table is installed, no IOMMU exists, and devices are not
+actually remapped. The reported state is a claim about the platform, not protection. Because the
+0xCA byte is the DMA-guard policy state, other components that consult it see the same claim.
+
+Measured on Windows 11 26100.9974 with VBS genuinely off, `FakeVbs = 1, FakeDma = 1`:
+`0xA9 = 01 00 00 00`, `0xCA = 01`, WMI properties `{2, 3, 4, 5}`, and msinfo32 reports
+"Kernel DMA Protection: On".
 
 ## How the driver tells the client
 

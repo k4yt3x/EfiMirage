@@ -30,6 +30,7 @@ extern EFIMIRAGE_DRIVER_PROTOCOL gEfiMirageDriverProtocol;
 //
 extern EFIMIRAGE_CONFIGURATION_DATA gDriverConfig;
 
+
 // The fake-VBS state is published only after winload's VBS-disable policy was written.
 EFI_STATUS
 EFIAPI

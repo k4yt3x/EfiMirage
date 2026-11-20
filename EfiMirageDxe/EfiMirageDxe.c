@@ -60,7 +60,9 @@ UpdateStateVariable(
 	State.Version = EFIMIRAGE_STATE_VERSION;
 	State.Flags = 0;
 	if (gDriverConfig.FakeVbs != 0 && mVbsPolicyConfirmed)
+	{
 		State.Flags |= EFIMIRAGE_STATE_FLAG_FAKE_VBS;
+	}
 	if (gDriverConfig.FakeSecureBoot)
 		State.Flags |= EFIMIRAGE_STATE_FLAG_FAKE_SECURE_BOOT;
 
@@ -108,9 +110,7 @@ SetVbsPolicyConfirmed(
 	IN BOOLEAN Confirmed
 	)
 {
-	// Recheck even when already false: a prior instance may have left a stale EFI flag.
-	if (Confirmed && mVbsPolicyConfirmed)
-		return EFI_SUCCESS;
+	// Always rewrite: the kernel patch stage adds flags after the policy is confirmed.
 	CONST BOOLEAN Previous = mVbsPolicyConfirmed;
 	mVbsPolicyConfirmed = Confirmed;
 	CONST EFI_STATUS Status = UpdateStateVariable();
@@ -150,7 +150,8 @@ EFIMIRAGE_CONFIGURATION_DATA gDriverConfig = {
 	FALSE,									// WaitForKeyPress
 	TRUE,									// FakeSecureBoot
 	1,										// FakeVbs
-	{ 0, 0, 0 }								// Reserved
+	0,										// FakeDma
+	{ 0, 0 }								// Reserved
 };
 
 //
@@ -648,13 +649,17 @@ DriverConfigure(
 	if (ConfigurationData->FakeVbs > 2)
 		return EFI_INVALID_PARAMETER;
 
+	if (ConfigurationData->FakeDma > 1)
+		return EFI_INVALID_PARAMETER;
+
 	gDriverConfig = *ConfigurationData;
 
-	Print(L"Configuration data accepted: DSE bypass %u, wait for keypress %u, fake Secure Boot %u, fake VBS %u.\r\n\r\n",
+	Print(L"Configuration data accepted: DSE bypass %u, wait for keypress %u, fake Secure Boot %u, fake VBS %u, fake DMA %u.\r\n\r\n",
 		(UINTN)gDriverConfig.DseBypassMethod,
 		(UINTN)gDriverConfig.WaitForKeyPress,
 		(UINTN)gDriverConfig.FakeSecureBoot,
-		(UINTN)gDriverConfig.FakeVbs);
+		(UINTN)gDriverConfig.FakeVbs,
+		(UINTN)gDriverConfig.FakeDma);
 
 	CONST EFI_STATUS StateStatus = UpdateStateVariable();
 	if (EFI_ERROR(StateStatus))
