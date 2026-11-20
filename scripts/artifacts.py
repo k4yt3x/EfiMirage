@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and publish the three-file deployment bundle; no third-party tools."""
+"""Validate and publish the deployment bundle; no third-party tools."""
 
 import hashlib
 from pathlib import Path
@@ -16,7 +16,8 @@ ARTIFACTS = (
     ("Loader.efi", "efi/{profile}/Loader.efi", 10),
     ("EfiDSEFix.exe", "windows/{profile}/console/EfiDSEFix.exe", 3),
 )
-NAMES = {name for name, _, _ in ARTIFACTS}
+INSTALLER = "install-vbs-task.ps1"
+NAMES = {name for name, _, _ in ARTIFACTS} | {INSTALLER}
 
 
 class ArtifactError(Exception):
@@ -135,6 +136,10 @@ def _verify_bundle(bundle):
         validate_pe(path, subsystem)
         if sha256(path) != checksums[name]:
             raise ArtifactError(f"{path}: SHA-256 checksum mismatch")
+    installer = bundle / INSTALLER
+    print(f"Verifying {installer}", file=sys.stderr)
+    if sha256(installer) != checksums[INSTALLER]:
+        raise ArtifactError(f"{installer}: SHA-256 checksum mismatch")
 
 
 def verify(root, profile):
@@ -153,6 +158,10 @@ def stage(root, profile):
                for name, source, subsystem in ARTIFACTS]
     for _, source, subsystem in sources:
         validate_pe(source, subsystem)
+    installer = root / "scripts" / INSTALLER
+    if installer.is_symlink() or not installer.is_file():
+        raise ArtifactError(f"{installer}: expected a regular installer file")
+    sources.append((INSTALLER, installer, None))
 
     dist = root / "dist"
     dist.mkdir(parents=True, exist_ok=True)
@@ -164,7 +173,7 @@ def stage(root, profile):
     try:
         for name, source, _ in sources:
             shutil.copyfile(source, staging / name)
-        manifest = "".join(f"{sha256(staging / name)}  {name}\n" for name, _, _ in ARTIFACTS)
+        manifest = "".join(f"{sha256(staging / name)}  {name}\n" for name, _, _ in sources)
         (staging / "SHA256SUMS").write_text(manifest, encoding="ascii")
         _verify_bundle(staging)
         if bundle.exists():

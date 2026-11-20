@@ -61,12 +61,13 @@ rules require that check for every PR, use an always-running status gate instead
 this filtered workflow unconditionally.
 
 Download `efimirage-x64-<profile>` from the **CD run's Artifacts** section. Its ZIP contains
-`EfiMirageDxe.efi`, `Loader.efi`, `EfiDSEFix.exe`, and `SHA256SUMS` at the archive root. Retention
-uses the repository's artifact-retention setting. Component build logs are uploaded by both
+`EfiMirageDxe.efi`, `Loader.efi`, `EfiDSEFix.exe`, `install-vbs-task.ps1`, and
+`SHA256SUMS` at the archive root. Retention uses the repository's
+artifact-retention setting. Component build logs are uploaded by both
 workflows, including after build failures, and retained for 14 days when available.
 
 For tag runs, a separate release job downloads only the deployment artifact, verifies it again,
-then attaches `efimirage-x64.zip` to the draft release. The ZIP contains the same four files at
+then attaches `efimirage-x64.zip` to the draft release. The ZIP contains the same five files at
 its root; build logs are not release assets. Rerunning the workflow updates the release notes
 and replaces the same-named asset.
 
@@ -141,8 +142,9 @@ it. Nothing in the build pipeline connects to or changes a Windows host.
 4. Build the Windows console utility. A compiler or linker error stops the pipeline.
 5. Validate all three images: x64 PE32+ headers, expected subsystems, section
    bounds, and 4 KiB EFI file/section alignment.
-6. Prepare and verify a complete bundle with `SHA256SUMS`, then publish it to
-   `dist/<profile>/`. Failed builds leave the previously published bundle alone.
+6. Include `scripts/install-vbs-task.ps1`, prepare and verify a complete bundle with
+   `SHA256SUMS`, then publish it to `dist/<profile>/`. Failed builds leave the previously
+   published bundle alone.
 
 Publication uses a prepared directory and two renames with rollback on failure;
 it is not an atomic directory exchange. Tasks invoked through `just` share a
@@ -174,12 +176,19 @@ Every published bundle contains exactly:
 EfiMirageDxe.efi
 Loader.efi
 EfiDSEFix.exe
+install-vbs-task.ps1
 SHA256SUMS
 ```
 
+Run `install-vbs-task.ps1` from a permanent extracted bundle location on Windows to
+install the boot-time VBS task. By default it selects the adjacent `EfiDSEFix.exe`;
+`-Exe` can select another executable and is resolved to an absolute path at installation.
+Do not move the executable while the task is installed.
+
 `just verify debug` selects a different bundle. Verification checks the complete
-file set and recomputes checksums as well as inspecting PE headers. It does not
-prove that a bundle matches later source edits, nor that it will boot.
+file set and recomputes checksums, including the installer, as well as inspecting
+PE headers. It does not prove that a bundle matches later source edits, nor that
+it will boot.
 The pipeline does not sign images or create boot entries.
 
 ### Logs and cleanup

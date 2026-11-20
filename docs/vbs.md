@@ -28,8 +28,8 @@ The values are the measured output of Windows 11 26300 with memory integrity on;
 - **The secure kernel is not running.** Anything that asks for it through a path other than the
   two sysinfo classes, or that inspects VTL1 directly, sees the truth. The `Secure System`
   process is absent, `hvix64.exe` never started, and no VTL1 memory exists.
-- **`ci.dll!g_CiOptions` still has no HVCI bits.** A kernel driver that locates the variable and
-  reads it directly (as `kvc` does) sees `0x6`, not the `0x1C000` family.
+- **`ci.dll!g_CiOptions` starts without HVCI bits.** Before `EfiDSEFix -a` runs, a kernel driver
+  that reads it directly sees `0x6`, not the `0x1C000` family.
 - **CPUID.** The hypervisor's `0x40000003:EBX` AccessVsm bit describes whether VBS was launched;
   with `VbsPolicyDisabled` set, it is not.
 - **The registry.** `CI\State\HVCIEnabled` is a volatile key the kernel creates only when HVCI
@@ -55,10 +55,15 @@ running, CPUID vendor, `SystemHypervisorInformation`, and the `AvailableSecurity
 
 ## How the driver tells the client
 
-`Configure()` writes a boot-service + runtime (never non-volatile) variable `MirageState` under a
-private GUID with the flags of what this boot emulates. `EfiDSEFix` reads it before its own VBS
-check, so `-c`, `-d` and `-r` keep working even though the reported state says VBS is running.
-The variable disappears on the next power cycle and is never written to NVRAM.
+The driver writes a boot-service + runtime (never non-volatile) variable `MirageState` under a
+private GUID. It records the Secure Boot setting at driver load or `Configure()`, but records the
+fake-VBS flag only after winload's `VbsPolicyDisabled` write succeeded for this boot. `EfiDSEFix`
+trusts that flag when its ordinary VBS queries are emulated, so `-c`, `-d` and `-r` keep working
+without overriding a failed VBS-disable attempt. A failure to patch the kernel can still leave
+VBS reporting incomplete. The flag is cleared if the Windows boot returns; if the firmware
+refuses to clear it, EfiMirage cold-reboots rather than continuing with a stale safety flag.
+Unload removes the variable. `-a` refuses to modify Windows state unless the flag is present and
+both kernel VBS queries report HVCI. The variable is volatile and never written to NVRAM.
 
 ## Measured results
 
@@ -84,9 +89,15 @@ boot (writing `Locked = 0` does not prevent it). `EfiDSEFix -a` does that, creat
 `CI\State\HVCIEnabled` as a **volatile** key the way a real HVCI boot does (it is gone after a
 reboot and leaves nothing behind), and ORs `0x1C000` into `g_CiOptions` so kernel drivers that
 pattern-scan the variable see the same value as on a VBS machine. `-d` and `-e` preserve those
-bits. It is needed once per boot, not once ever: `scripts/install-vbs-task.ps1` installs a
-scheduled task that runs it as SYSTEM at start (remove it with `-Remove`). A boot-start driver that
-reads `g_CiOptions` before the task runs still sees `0x6`.
+bits. It is needed once per boot, not once ever. In a permanent directory containing the
+extracted release bundle, run `powershell -ExecutionPolicy Bypass -File .\install-vbs-task.ps1`
+as Administrator. This installs a task that runs the adjacent `EfiDSEFix.exe -a` as SYSTEM at
+startup. The executable must remain at that path. `-a` makes no changes and exits with failure if
+this boot has not established VBS emulation; it also reports failures to restore any CI or registry
+state. Before turning `FakeVbs` off or removing EfiMirage, remove the task with
+`powershell -ExecutionPolicy Bypass -File .\install-vbs-task.ps1 -Remove`. Removing the task does
+not revert DeviceGuard configuration written by previous `-a` runs. A boot-start driver that reads
+`g_CiOptions` before the task runs still sees `0x6`.
 
 ## Why the remaining differences exist
 
@@ -106,4 +117,5 @@ reads `g_CiOptions` before the task runs still sees `0x6`.
 
 `scripts/test/vbs-probe.ps1` prints every surface above. With the emulation on, the output should
 match a real memory-integrity machine for the sysinfo classes and WMI, and differ for the process
-list, CPUID and `g_CiOptions`. `EfiDSEFix -v` prints the same kernel-side values compactly.
+list and CPUID. `g_CiOptions` differs until `-a` runs. `EfiDSEFix -v` prints the kernel-side
+values compactly.

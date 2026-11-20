@@ -1008,6 +1008,8 @@ PatchNtoskrnl(
 	IN PEFI_IMAGE_NT_HEADERS NtHeaders
 	)
 {
+	gVbsQueryPatched = FALSE;
+
 	PRINT_KERNEL_PATCH_MSG(L"[PatchNtoskrnl] ntoskrnl.exe at 0x%llX, size 0x%llX\r\n", (UINTN)ImageBase, (UINTN)NtHeaders->OptionalHeader.SizeOfImage);
 
 	// Print file and version info

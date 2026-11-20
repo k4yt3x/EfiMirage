@@ -80,6 +80,15 @@ class DriverLifecycleTests(unittest.TestCase):
     def test_normal_unload_restores_startimage(self):
         self.run_case("normal-unload")
 
+    def test_vbs_flag_needs_confirmed_policy_and_unload_clears_it(self):
+        for fake_secure_boot in (False, True):
+            with self.subTest(fake_secure_boot=fake_secure_boot):
+                self.run_case("vbs-state", fake_secure_boot=fake_secure_boot)
+
+    def test_stale_vbs_flag_cannot_survive_failed_initialization_or_configuration(self):
+        self.run_case("stale-state-init", fake_secure_boot=True)
+        self.run_case("stale-state-config", fake_secure_boot=True)
+
     def test_initialization_failure_restores_installed_hooks(self):
         self.run_case("initialize-failure")
 

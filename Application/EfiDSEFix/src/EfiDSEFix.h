@@ -32,6 +32,14 @@ AdjustCiOptions(
 	_In_ BOOLEAN ReadOnly
 	);
 
+BOOLEAN
+IsVbsEmulationActive(
+	);
+
+NTSTATUS
+SetCiOptionsHvciBits(
+	);
+
 // sysinfo.cpp
 NTSTATUS
 DumpSystemInformation(
@@ -47,10 +55,6 @@ ReportVbsState(
 
 NTSTATUS
 ApplyVbsState(
-	);
-
-NTSTATUS
-SetCiOptionsHvciBits(
 	);
 
 // HVCI-related bits in g_CiOptions on a real memory-integrity machine (KVC reports 0x1C006).

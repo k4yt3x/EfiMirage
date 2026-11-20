@@ -6,11 +6,17 @@
 
 - VBS and memory integrity emulation, off by default and configurable per boot.
 - `EfiDSEFix -v` reports VBS/HVCI surfaces; `-a` restores registry and CI state.
-- `scripts/install-vbs-task.ps1` runs `-a` at boot as SYSTEM.
+- Release bundles include `install-vbs-task.ps1` to run `-a` at boot as SYSTEM.
 
 ### Changed
 
 - Documentation-only pushes and pull requests no longer trigger CI.
+
+### Fixed
+
+- Failed VBS disablement no longer lets `EfiDSEFix` access kernel memory.
+- `EfiDSEFix -a` refuses inactive emulation and reports incomplete state restoration.
+- `EfiDSEFix -a` replaces persistent HVCI state keys with volatile ones.
 
 ## [2.0.0] - 2026-11-15
 

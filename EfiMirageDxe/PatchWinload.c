@@ -694,6 +694,8 @@ PatchWinload(
 	IN PEFI_IMAGE_NT_HEADERS NtHeaders
 	)
 {
+	ClearVbsPolicyOrReset();
+
 	// Print file and version info
 	UINT16 MajorVersion = 0, MinorVersion = 0, BuildNumber = 0, Revision = 0;
 	EFI_STATUS Status = GetPeFileVersionInfo(ImageBase, &MajorVersion, &MinorVersion, &BuildNumber, &Revision, NULL);
@@ -760,6 +762,15 @@ PatchWinload(
 		Status = DisableVbs();
 		if (EFI_ERROR(Status))
 			Print(L"\r\nWARNING: failed to set EFI runtime variable \"%ls\" in order to disable VBS.\r\n", VbsPolicyDisabledVariableName);
+		else if (gDriverConfig.FakeVbs != 0)
+		{
+			// This is the last firmware context that can safely publish a volatile state
+			// variable before the kernel patch runs in winload's protected context.
+			CONST EFI_STATUS StateStatus = SetVbsPolicyConfirmed(TRUE);
+			if (EFI_ERROR(StateStatus))
+				Print(L"WARNING: failed to record VBS emulation state: %llx (%r)\r\n",
+					StateStatus, StateStatus);
+		}
 	}
 
 	// Find winload!OslFwpKernelSetupPhase1

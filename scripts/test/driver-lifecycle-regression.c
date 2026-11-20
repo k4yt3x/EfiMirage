@@ -38,9 +38,11 @@ static struct {
 	BOOLEAN Closed;
 } ExitEvent, VirtualEvent;
 static UINTN Uninstalls, SetVariableCalls, BootPatches, Classifications, HandleQueries;
-static BOOLEAN SecureBootInstalled, FailVirtualEvent;
+static UINT32 StateFlags;
+static BOOLEAN SecureBootInstalled, FailVirtualEvent, FailStateDelete, FailStateWrite;
 static UINTN SecureBootUninstalls, Conversions;
-static jmp_buf BootExit;
+static jmp_buf BootExit, ResetExit;
+static BOOLEAN ResetCalled;
 static CHAR16 ExitMessage[] = L"mock image exit";
 static CHAR16 ProbeName[] = EFIMIRAGE_BACKDOOR_VARIABLE_NAME;
 static UINTN ExpectedAttributes = 0x1234;
@@ -261,19 +263,57 @@ static EFI_STATUS EFIAPI MockConvertPointer(UINTN Disposition, VOID** Address)
 	++Conversions;
 	return EFI_SUCCESS;
 }
+static VOID EFIAPI MockReset(EFI_RESET_TYPE Type, EFI_STATUS Status, UINTN Size, VOID* Data)
+{
+	CHECK(Type == EfiResetCold && Status == EFI_WRITE_PROTECTED && Size == 0 && Data == NULL);
+	ResetCalled = TRUE;
+	longjmp(ResetExit, 1);
+}
+static EFI_STATUS EFIAPI MockGetVariable(CHAR16* Name, EFI_GUID* Guid, UINT32* Attributes,
+	UINTN* Size, VOID* Data)
+{
+	CONST CHAR16 StateName[] = EFIMIRAGE_STATE_VARIABLE_NAME;
+	CONST EFI_GUID StateGuid = EFIMIRAGE_STATE_VARIABLE_GUID;
+	CHECK(StrnCmp(Name, StateName, sizeof(StateName) / sizeof(CHAR16)) == 0);
+	CHECK(CompareGuid(Guid, &StateGuid) && Size != NULL);
+	if (StateFlags == 0)
+		return EFI_NOT_FOUND;
+	if (*Size < sizeof(EFIMIRAGE_STATE_DATA))
+	{
+		*Size = sizeof(EFIMIRAGE_STATE_DATA);
+		return EFI_BUFFER_TOO_SMALL;
+	}
+	CHECK(Data != NULL);
+	if (Attributes != NULL)
+		*Attributes = EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS;
+	*Size = sizeof(EFIMIRAGE_STATE_DATA);
+	*(EFIMIRAGE_STATE_DATA*)Data = (EFIMIRAGE_STATE_DATA){
+		EFIMIRAGE_STATE_MAGIC, EFIMIRAGE_STATE_VERSION, StateFlags
+	};
+	return EFI_SUCCESS;
+}
 static EFI_STATUS EFIAPI MockSetVariable(CHAR16* Name, EFI_GUID* Guid, UINT32 Attributes,
 	UINTN Size, VOID* Data)
 {
-	// Configure() records the emulation state; that write is expected and is not a backdoor call.
 	CONST CHAR16 StateName[] = EFIMIRAGE_STATE_VARIABLE_NAME;
-	if (Name != NULL && StrnCmp(Name, StateName, (sizeof(StateName) / sizeof(CHAR16)) - 1) == 0)
+	CONST EFI_GUID StateGuid = EFIMIRAGE_STATE_VARIABLE_GUID;
+	if (Name != NULL && StrnCmp(Name, StateName, sizeof(StateName) / sizeof(CHAR16)) == 0)
 	{
-		// Nothing emulated: the driver deletes the variable instead of writing it.
+		CHECK(CompareGuid(Guid, &StateGuid));
 		if (Attributes == 0 && Size == 0 && Data == NULL)
+		{
+			if (FailStateDelete)
+				return EFI_WRITE_PROTECTED;
+			StateFlags = 0;
 			return EFI_SUCCESS;
+		}
 		CHECK(Attributes == (EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS));
 		CHECK(Size == sizeof(EFIMIRAGE_STATE_DATA) && Data != NULL);
-		CHECK(((EFIMIRAGE_STATE_DATA*)Data)->Magic == EFIMIRAGE_STATE_MAGIC);
+		if (FailStateWrite)
+			return EFI_WRITE_PROTECTED;
+		CONST EFIMIRAGE_STATE_DATA* State = Data;
+		CHECK(State->Magic == EFIMIRAGE_STATE_MAGIC && State->Version == EFIMIRAGE_STATE_VERSION);
+		StateFlags = State->Flags;
 		return EFI_SUCCESS;
 	}
 
@@ -389,7 +429,9 @@ static void Initialize(EFIMIRAGE_DSE_BYPASS_TYPE Mode, BOOLEAN Fake)
 	BootServices.LoadImage = MockLoad;
 	BootServices.StartImage = MockStart;
 	RuntimeServices.SetVariable = MockSetVariable;
+	RuntimeServices.GetVariable = MockGetVariable;
 	RuntimeServices.ConvertPointer = MockConvertPointer;
+	RuntimeServices.ResetSystem = MockReset;
 	SystemTable.ConOut = &Console;
 	Console.SetAttribute = MockAttribute;
 	Console.EnableCursor = MockCursor;
@@ -448,9 +490,57 @@ int main(int argc, char** argv)
 	EFIMIRAGE_DSE_BYPASS_TYPE Mode = (EFIMIRAGE_DSE_BYPASS_TYPE)atoi(argv[2]);
 	BOOLEAN Fake = atoi(argv[3]) != 0;
 	FailVirtualEvent = strcmp(Case, "initialize-failure") == 0;
+	if (strcmp(Case, "stale-state-init") == 0)
+	{
+		StateFlags = EFIMIRAGE_STATE_FLAG_FAKE_VBS;
+		FailStateWrite = TRUE;
+		if (setjmp(ResetExit) == 0)
+			Initialize(Mode, Fake);
+		CHECK(ResetCalled);
+		return Failures == 0 ? 0 : 1;
+	}
 	Initialize(Mode, Fake);
 	if (FailVirtualEvent)
 		CheckUnloaded();
+	else if (strcmp(Case, "stale-state-config") == 0)
+	{
+		StateFlags = EFIMIRAGE_STATE_FLAG_FAKE_VBS;
+		FailStateWrite = TRUE;
+		EFIMIRAGE_CONFIGURATION_DATA Config = gDriverConfig;
+		Config.FakeVbs = 0;
+		if (setjmp(ResetExit) == 0)
+			DriverConfigure(&Config);
+		CHECK(ResetCalled);
+	}
+	else if (strcmp(Case, "vbs-state") == 0)
+	{
+		EFIMIRAGE_CONFIGURATION_DATA Config = gDriverConfig;
+		Config.FakeVbs = 1;
+		CHECK(DriverConfigure(&Config) == EFI_SUCCESS);
+		CONST UINT32 SecureBootFlag = Fake ? EFIMIRAGE_STATE_FLAG_FAKE_SECURE_BOOT : 0;
+		CHECK(StateFlags == SecureBootFlag);
+		CHECK(SetVbsPolicyConfirmed(TRUE) == EFI_SUCCESS);
+		CHECK(StateFlags == (SecureBootFlag | EFIMIRAGE_STATE_FLAG_FAKE_VBS));
+		CHECK(SetVbsPolicyConfirmed(FALSE) == EFI_SUCCESS);
+		CHECK(StateFlags == SecureBootFlag);
+		CHECK(SetVbsPolicyConfirmed(TRUE) == EFI_SUCCESS);
+		CHECK(StateFlags == (SecureBootFlag | EFIMIRAGE_STATE_FLAG_FAKE_VBS));
+		FailStateDelete = TRUE;
+		CHECK(EfiMirageUnload(gImageHandle) == EFI_WRITE_PROTECTED);
+		CHECK(StateFlags & EFIMIRAGE_STATE_FLAG_FAKE_VBS);
+		CHECK(BootServices.StartImage == HookedStartImage);
+		if (!Fake)
+		{
+			if (setjmp(ResetExit) == 0)
+				ClearVbsPolicyOrReset();
+			CHECK(ResetCalled);
+			CHECK(StateFlags & EFIMIRAGE_STATE_FLAG_FAKE_VBS);
+		}
+		FailStateDelete = FALSE;
+		CHECK(EfiMirageUnload(gImageHandle) == EFI_SUCCESS);
+		CHECK(StateFlags == 0);
+		CheckUnloaded();
+	}
 	else if (strcmp(Case, "normal-unload") == 0 || strcmp(Case, "unload-inflight") == 0)
 	{
 		if (strcmp(Case, "unload-inflight") == 0)

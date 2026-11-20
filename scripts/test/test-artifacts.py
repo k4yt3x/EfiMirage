@@ -19,7 +19,8 @@ SPEC = importlib.util.spec_from_file_location("artifacts", SCRIPT)
 artifacts = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(artifacts)
 
-NAMES = ("EfiMirageDxe.efi", "Loader.efi", "EfiDSEFix.exe")
+INSTALLER = Path(__file__).resolve().parents[1] / "install-vbs-task.ps1"
+NAMES = ("EfiMirageDxe.efi", "Loader.efi", "EfiDSEFix.exe", INSTALLER.name)
 PE = 128
 OPTIONAL = PE + 24
 SECTIONS = OPTIONAL + 240
@@ -72,6 +73,10 @@ class ArtifactTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(minimal_pe(subsystem, marker))
             result[name] = path
+        installer = self.root / "scripts" / INSTALLER.name
+        installer.parent.mkdir(parents=True, exist_ok=True)
+        installer.write_bytes(INSTALLER.read_bytes())
+        result[INSTALLER.name] = installer
         return result
 
     def snapshot(self, profile="release"):
@@ -147,7 +152,8 @@ class ArtifactTests(unittest.TestCase):
             with self.subTest(missing=missing):
                 sources = self.inputs()
                 sources[missing].unlink()
-                with self.assertRaises(OSError):
+                error = artifacts.ArtifactError if missing == INSTALLER.name else OSError
+                with self.assertRaises(error):
                     artifacts.stage(self.root, "release")
                 self.assertFalse((self.root / "dist/release").exists())
 
@@ -252,6 +258,27 @@ class ArtifactTests(unittest.TestCase):
         with self.assertRaisesRegex(artifacts.ArtifactError, "truncated"):
             artifacts.verify(self.root, "release")
 
+    def test_missing_or_tampered_installer_rejected(self):
+        self.inputs()
+        bundle = artifacts.stage(self.root, "release")
+        installer = bundle / INSTALLER.name
+        content = installer.read_bytes()
+        installer.unlink()
+        with self.assertRaisesRegex(artifacts.ArtifactError, "missing: install-vbs-task.ps1"):
+            artifacts.verify(self.root, "release")
+        installer.write_bytes(content + b"\n# changed\n")
+        with self.assertRaisesRegex(artifacts.ArtifactError, "install-vbs-task.ps1.*checksum mismatch"):
+            artifacts.verify(self.root, "release")
+
+    def test_installer_checksum_entry_required(self):
+        self.inputs()
+        bundle = artifacts.stage(self.root, "release")
+        manifest = bundle / "SHA256SUMS"
+        manifest.write_text("".join(line for line in manifest.read_text().splitlines(keepends=True)
+                                    if INSTALLER.name not in line))
+        with self.assertRaisesRegex(artifacts.ArtifactError, "missing checksum entries"):
+            artifacts.verify(self.root, "release")
+
     def test_corrupt_digest_and_content(self):
         self.inputs()
         bundle = artifacts.stage(self.root, "release")
@@ -293,7 +320,6 @@ class ArtifactTests(unittest.TestCase):
     def test_cli_defaults_to_script_root_not_working_directory(self):
         self.inputs()
         script = self.root / "scripts/artifacts.py"
-        script.parent.mkdir()
         script.write_bytes(SCRIPT.read_bytes())
         unrelated = self.root / "unrelated"
         unrelated.mkdir()

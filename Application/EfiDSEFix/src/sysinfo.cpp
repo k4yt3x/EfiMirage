@@ -399,9 +399,8 @@ ReportVbsState(
 }
 
 //
-// Creates CI\State\HVCIEnabled the way a real HVCI boot does: the key is volatile, so it lives
-// only for this boot and leaves nothing behind. A persistent key left by an earlier version cannot
-// be turned volatile, so it is deleted and recreated.
+// CI\State must be volatile; opening an existing key with REG_OPTION_VOLATILE does not change
+// its lifetime, so an existing key is replaced before writing HVCIEnabled.
 //
 static
 NTSTATUS
@@ -415,23 +414,72 @@ CreateVolatileCiState(
 
 	HANDLE Key = nullptr;
 	ULONG Disposition = 0;
-	NTSTATUS Status = NtCreateKey(&Key, KEY_SET_VALUE, &Attributes, 0, nullptr, REG_OPTION_VOLATILE, &Disposition);
-	if (Status == STATUS_OBJECT_NAME_COLLISION)
-	{
-		Status = NtOpenKey(&Key, DELETE | KEY_SET_VALUE, &Attributes);
-		if (NT_SUCCESS(Status))
-		{
-			CONST NTSTATUS DeleteStatus = NtDeleteKey(Key);
-			NtClose(Key);
-			Key = nullptr;
-			if (NT_SUCCESS(DeleteStatus))
-				Status = NtCreateKey(&Key, KEY_SET_VALUE, &Attributes, 0, nullptr, REG_OPTION_VOLATILE, &Disposition);
-			else
-				Status = DeleteStatus;
-		}
-	}
+	NTSTATUS Status = NtCreateKey(&Key, KEY_QUERY_VALUE | KEY_SET_VALUE, &Attributes, 0,
+											nullptr, REG_OPTION_VOLATILE, &Disposition);
 	if (!NT_SUCCESS(Status))
 		return Status;
+	if (Disposition == REG_OPENED_EXISTING_KEY)
+	{
+		KEY_FLAGS_INFORMATION Flags = {};
+		ULONG ResultLength = 0;
+		Status = NtQueryKey(Key, KeyFlagsInformation, &Flags, sizeof(Flags), &ResultLength);
+		if (!NT_SUCCESS(Status))
+		{
+			NtClose(Key);
+			return Status;
+		}
+		if ((Flags.KeyFlags & REG_OPTION_VOLATILE) == 0)
+		{
+			// Do not discard any other CI state while replacing a persistent key.
+			union
+			{
+				KEY_FULL_INFORMATION Info;
+				UCHAR Buffer[256];
+			} Full = {};
+			Status = NtQueryKey(Key, KeyFullInformation, &Full, sizeof(Full), &ResultLength);
+			if (!NT_SUCCESS(Status))
+			{
+				NtClose(Key);
+				return Status;
+			}
+			if (Full.Info.SubKeys != 0 || Full.Info.Values > 1)
+			{
+				NtClose(Key);
+				Printf(L"CI\\State contains other entries; cannot replace it as volatile.\n");
+				return STATUS_NOT_SUPPORTED;
+			}
+			if (Full.Info.Values == 1)
+			{
+				UNICODE_STRING ValueName;
+				RtlInitUnicodeString(&ValueName, L"HVCIEnabled");
+				UCHAR ValueBuffer[sizeof(KEY_VALUE_PARTIAL_INFORMATION) + sizeof(ULONG)];
+				Status = NtQueryValueKey(Key, &ValueName, KeyValuePartialInformation,
+					ValueBuffer, sizeof(ValueBuffer), &ResultLength);
+				if (!NT_SUCCESS(Status))
+				{
+					NtClose(Key);
+					Printf(L"CI\\State contains other entries; cannot replace it as volatile.\n");
+					return STATUS_NOT_SUPPORTED;
+				}
+			}
+			NtClose(Key);
+			Status = NtOpenKey(&Key, DELETE, &Attributes);
+			if (!NT_SUCCESS(Status))
+				return Status;
+			CONST NTSTATUS DeleteStatus = NtDeleteKey(Key);
+			NtClose(Key);
+			if (!NT_SUCCESS(DeleteStatus))
+				return DeleteStatus;
+			Status = NtCreateKey(&Key, KEY_SET_VALUE, &Attributes, 0, nullptr, REG_OPTION_VOLATILE, &Disposition);
+			if (!NT_SUCCESS(Status))
+				return Status;
+			if (Disposition != REG_CREATED_NEW_KEY)
+			{
+				NtClose(Key);
+				return STATUS_OBJECT_NAME_COLLISION;
+			}
+		}
+	}
 
 	UNICODE_STRING ValueName;
 	RtlInitUnicodeString(&ValueName, L"HVCIEnabled");
@@ -451,8 +499,14 @@ NTSTATUS
 ApplyVbsState(
 	)
 {
-	CONST PWCHAR DeviceGuard = const_cast<PWCHAR>(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\DeviceGuard");
-	CONST PWCHAR Scenario = const_cast<PWCHAR>(L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity");
+	if (!IsVbsEmulationActive())
+	{
+		Printf(L"VBS emulation is not active for this boot; no state was changed.\n");
+		return STATUS_NOT_SUPPORTED;
+	}
+
+	PCWSTR DeviceGuard = L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\DeviceGuard";
+	PCWSTR Scenario = L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity";
 
 	struct
 	{
@@ -468,14 +522,13 @@ ApplyVbsState(
 		{ Scenario,    L"Locked", 0 },
 	};
 
-	// The kernel-side value a real memory-integrity machine carries; -V is what a logon task runs.
 	CONST NTSTATUS CiStatus = SetCiOptionsHvciBits();
-	Printf(L"  g_CiOptions HVCI bits: %ls\n", NT_SUCCESS(CiStatus) ? L"ok" : L"failed");
+	Printf(L"  g_CiOptions HVCI bits: %ls (0x%08lX)\n", NT_SUCCESS(CiStatus) ? L"ok" : L"failed", CiStatus);
 
 	CONST NTSTATUS StateStatus = CreateVolatileCiState();
-	Printf(L"  CI\\State\\HVCIEnabled (volatile): %ls\n", NT_SUCCESS(StateStatus) ? L"ok" : L"failed");
+	Printf(L"  CI\\State\\HVCIEnabled (volatile): %ls (0x%08lX)\n", NT_SUCCESS(StateStatus) ? L"ok" : L"failed", StateStatus);
 
-	NTSTATUS FirstError = STATUS_SUCCESS;
+	NTSTATUS FirstError = !NT_SUCCESS(CiStatus) ? CiStatus : StateStatus;
 	for (ULONG i = 0; i < ARRAYSIZE(Settings); ++i)
 	{
 		CONST NTSTATUS Status = RtlWriteRegistryValue(RTL_REGISTRY_ABSOLUTE,

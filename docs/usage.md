@@ -27,7 +27,7 @@ Loader vs UEFI driver entry comparison
 ## Booting the loader
 
 1. Download and extract the EfiMirage bundle. It contains `Loader.efi`, `EfiMirageDxe.efi`,
-   `EfiDSEFix.exe`, and `SHA256SUMS` at the archive root.
+   `EfiDSEFix.exe`, `install-vbs-task.ps1`, and `SHA256SUMS` at the archive root.
 2. Create `EFI/Boot` on a boot drive, such as a FAT32 USB stick or a VM disk. Copy the two
    `.efi` files there and rename the copied `Loader.efi` to `bootx64.efi`.
    Assuming drive `X:`, the paths should be `X:/EFI/Boot/{bootx64|EfiMirageDxe}.efi`.

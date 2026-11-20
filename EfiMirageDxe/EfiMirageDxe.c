@@ -42,14 +42,14 @@ EFIMIRAGE_DRIVER_PROTOCOL gEfiMirageDriverProtocol =
 // GUID of the boot-service state variable the Windows-side client reads.
 //
 STATIC CONST EFI_GUID mStateVariableGuid = EFIMIRAGE_STATE_VARIABLE_GUID;
+STATIC BOOLEAN mVbsPolicyConfirmed = FALSE;
 
 //
-// Records what this boot is emulating so the Windows-side client can tell an emulated VBS state
-// from a real one. Boot service + runtime only, which makes it volatile: it disappears at power
-// loss and is never written to NVRAM.
+// The Windows client trusts this flag to bypass its real-VBS safety check, so it must not be set
+// before winload's VBS-disable policy was written successfully for this boot.
 //
 STATIC
-VOID
+EFI_STATUS
 EFIAPI
 UpdateStateVariable(
 	VOID
@@ -59,24 +59,86 @@ UpdateStateVariable(
 	State.Magic = EFIMIRAGE_STATE_MAGIC;
 	State.Version = EFIMIRAGE_STATE_VERSION;
 	State.Flags = 0;
-	if (gDriverConfig.FakeVbs != 0)
+	if (gDriverConfig.FakeVbs != 0 && mVbsPolicyConfirmed)
 		State.Flags |= EFIMIRAGE_STATE_FLAG_FAKE_VBS;
 	if (gDriverConfig.FakeSecureBoot)
 		State.Flags |= EFIMIRAGE_STATE_FLAG_FAKE_SECURE_BOOT;
 
+	EFI_STATUS Status;
 	if (State.Flags == 0)
 	{
-		gRT->SetVariable((CHAR16*)EFIMIRAGE_STATE_VARIABLE_NAME, (EFI_GUID*)&mStateVariableGuid, 0, 0, NULL);
-		return;
+		Status = gRT->SetVariable((CHAR16*)EFIMIRAGE_STATE_VARIABLE_NAME, (EFI_GUID*)&mStateVariableGuid, 0, 0, NULL);
+		if (Status == EFI_NOT_FOUND)
+			return EFI_SUCCESS;
 	}
-
-	CONST EFI_STATUS Status = gRT->SetVariable((CHAR16*)EFIMIRAGE_STATE_VARIABLE_NAME,
+	else
+	{
+		Status = gRT->SetVariable((CHAR16*)EFIMIRAGE_STATE_VARIABLE_NAME,
 												(EFI_GUID*)&mStateVariableGuid,
 												EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS,
 												sizeof(State),
 												&State);
+	}
+	return Status;
+}
+
+STATIC
+BOOLEAN
+EFIAPI
+HasTrustedVbsFlag(
+	VOID
+	)
+{
+	EFIMIRAGE_STATE_DATA State;
+	UINTN Size = sizeof(State);
+	CONST EFI_STATUS Status = gRT->GetVariable((CHAR16*)EFIMIRAGE_STATE_VARIABLE_NAME,
+											(EFI_GUID*)&mStateVariableGuid, NULL, &Size, &State);
+	if (Status == EFI_NOT_FOUND || Status == EFI_BUFFER_TOO_SMALL)
+		return FALSE;
 	if (EFI_ERROR(Status))
-		Print(L"WARNING: failed to record emulation state: %llx (%r)\r\n", Status, Status);
+		return TRUE; // An unreadable variable cannot be assumed safe to leave behind.
+	return Size == sizeof(State) && State.Magic == EFIMIRAGE_STATE_MAGIC &&
+		State.Version == EFIMIRAGE_STATE_VERSION &&
+		(State.Flags & EFIMIRAGE_STATE_FLAG_FAKE_VBS) != 0;
+}
+
+EFI_STATUS
+EFIAPI
+SetVbsPolicyConfirmed(
+	IN BOOLEAN Confirmed
+	)
+{
+	// Recheck even when already false: a prior instance may have left a stale EFI flag.
+	if (Confirmed && mVbsPolicyConfirmed)
+		return EFI_SUCCESS;
+	CONST BOOLEAN Previous = mVbsPolicyConfirmed;
+	mVbsPolicyConfirmed = Confirmed;
+	CONST EFI_STATUS Status = UpdateStateVariable();
+	if (EFI_ERROR(Status))
+		mVbsPolicyConfirmed = Previous;
+	return Status;
+}
+
+VOID
+EFIAPI
+ClearVbsPolicyOrReset(
+	VOID
+	)
+{
+	CONST EFI_STATUS Status = SetVbsPolicyConfirmed(FALSE);
+	if (!EFI_ERROR(Status))
+		return;
+	if (!HasTrustedVbsFlag())
+	{
+		mVbsPolicyConfirmed = FALSE;
+		Print(L"WARNING: failed to update emulation state: %llx (%r). VBS emulation is unavailable.\r\n",
+			Status, Status);
+		return;
+	}
+	Print(L"Cannot continue with a stale VBS emulation state: %llx (%r). Rebooting.\r\n", Status, Status);
+	gRT->ResetSystem(EfiResetCold, Status, 0, NULL);
+	// A firmware reset that returns must not allow the stale safety flag into Windows.
+	for (;;) { }
 }
 
 //
@@ -301,6 +363,8 @@ HookedStartImage(
 	}
 
 	CONST EFI_STATUS Status = mOriginalStartImage(ImageHandle, ExitDataSize, ExitData);
+	if (mWindowsBootActive && !gEfiAtRuntime)
+		ClearVbsPolicyOrReset();
 	mWindowsBootActive = PreviousWindowsBoot;
 	--mStartImageDepth;
 	return Status;
@@ -592,7 +656,12 @@ DriverConfigure(
 		(UINTN)gDriverConfig.FakeSecureBoot,
 		(UINTN)gDriverConfig.FakeVbs);
 
-	UpdateStateVariable();
+	CONST EFI_STATUS StateStatus = UpdateStateVariable();
+	if (EFI_ERROR(StateStatus))
+	{
+		Print(L"WARNING: failed to record emulation state: %llx (%r)\r\n", StateStatus, StateStatus);
+		ClearVbsPolicyOrReset();
+	}
 
 	return EFI_SUCCESS;
 }
@@ -613,6 +682,15 @@ EfiMirageUnload(
 	}
 
 	ASSERT(gBS != NULL);
+
+	// A successful unload must not leave a flag that lets the client skip its VBS guard.
+	CONST EFI_STATUS StateStatus = gRT->SetVariable((CHAR16*)EFIMIRAGE_STATE_VARIABLE_NAME,
+											(EFI_GUID*)&mStateVariableGuid, 0, 0, NULL);
+	if (EFI_ERROR(StateStatus) && StateStatus != EFI_NOT_FOUND)
+	{
+		Print(L"Cannot unload: failed to clear emulation state: %llx (%r)\r\n", StateStatus, StateStatus);
+		return StateStatus;
+	}
 
 	// Uninstall our installed driver protocols
 	gBS->UninstallMultipleProtocolInterfaces(gImageHandle,
@@ -783,6 +861,15 @@ EfiMirageInitialize(
 	gKernelPatchInfo.WinloadBuildNumber = 0;
 	gKernelPatchInfo.KernelBuildNumber = 0;
 	gKernelPatchInfo.KernelBase = NULL;
+
+	// A direct driver entry never calls Configure(); record the default state and replace any
+	// marker left by a previous attempt in this firmware session.
+	CONST EFI_STATUS StateStatus = UpdateStateVariable();
+	if (EFI_ERROR(StateStatus))
+	{
+		Print(L"WARNING: failed to record emulation state: %llx (%r)\r\n", StateStatus, StateStatus);
+		ClearVbsPolicyOrReset();
+	}
 
 	// Keep the driver identity visible before the patch-stage output begins.
 	RtlSleep(1500);

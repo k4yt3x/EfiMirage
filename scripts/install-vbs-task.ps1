@@ -19,12 +19,14 @@ if ($Remove) {
     exit $LASTEXITCODE
 }
 
-if (-not (Test-Path $Exe)) {
+if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) {
     Write-Error "not found: $Exe"
     exit 1
 }
 
-schtasks /create /tn $TaskName /tr "`"$Exe`" -a" /sc onstart /ru SYSTEM /rl HIGHEST /f
+# SYSTEM starts the task in a different working directory; store the resolved path.
+$ExePath = (Resolve-Path -LiteralPath $Exe).ProviderPath
+schtasks /create /tn $TaskName /tr "`"$ExePath`" -a" /sc onstart /ru SYSTEM /rl HIGHEST /f
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 schtasks /query /tn $TaskName /v /fo list | Select-String -Pattern 'TaskName|Task To Run|Run As User|Schedule Type'

@@ -270,9 +270,8 @@ Exit:
 }
 
 //
-// The driver records what this boot emulates in a volatile EFI variable. Checking it keeps the
-// backdoor usable while VBS is only being *reported* as running: the sysinfo surfaces then say VBS
-// is on, which would otherwise make this tool refuse to touch g_CiOptions.
+// The driver publishes the fake-VBS flag only after the boot policy that keeps real VBS off
+// has been written. Reported kernel state alone cannot distinguish emulation from real VBS.
 //
 static
 BOOLEAN
@@ -299,6 +298,44 @@ IsEmulationActive(
 	return (State.Flags & Flag) != 0;
 }
 
+#define EFIMIRAGE_VBS_CI_REPORTED 0x1
+#define EFIMIRAGE_VBS_IUM_REPORTED 0x2
+
+static
+UINT8
+GetVbsReportFlags(
+	)
+{
+	UINT8 Flags = 0;
+	SYSTEM_CODEINTEGRITY_INFORMATION CodeIntegrityInfo = { sizeof(SYSTEM_CODEINTEGRITY_INFORMATION) };
+	NTSTATUS Status = NtQuerySystemInformation(SystemCodeIntegrityInformation,
+											&CodeIntegrityInfo,
+											sizeof(CodeIntegrityInfo),
+											nullptr);
+	if (NT_SUCCESS(Status) &&
+		(CodeIntegrityInfo.CodeIntegrityOptions &
+			(CODEINTEGRITY_OPTION_HVCI_KMCI_ENABLED | CODEINTEGRITY_OPTION_HVCI_IUM_ENABLED)) != 0)
+		Flags |= EFIMIRAGE_VBS_CI_REPORTED;
+
+	SYSTEM_ISOLATED_USER_MODE_INFORMATION IumInfo = { 0 };
+	Status = NtQuerySystemInformation(SystemIsolatedUserModeInformation,
+									&IumInfo,
+									sizeof(IumInfo),
+									nullptr);
+	if (NT_SUCCESS(Status) && (IumInfo.SecureKernelRunning || IumInfo.HvciEnabled))
+		Flags |= EFIMIRAGE_VBS_IUM_REPORTED;
+
+	return Flags;
+}
+
+BOOLEAN
+IsVbsEmulationActive(
+	)
+{
+	return IsEmulationActive(EFIMIRAGE_STATE_FLAG_FAKE_VBS) &&
+		GetVbsReportFlags() == (EFIMIRAGE_VBS_CI_REPORTED | EFIMIRAGE_VBS_IUM_REPORTED);
+}
+
 static
 BOOLEAN
 IsVbsEnabled(
@@ -307,26 +344,7 @@ IsVbsEnabled(
 	// A VBS state that this boot is only emulating does not block kernel memory writes.
 	if (IsEmulationActive(EFIMIRAGE_STATE_FLAG_FAKE_VBS))
 		return FALSE;
-
-	SYSTEM_CODEINTEGRITY_INFORMATION CodeIntegrityInfo = { sizeof(SYSTEM_CODEINTEGRITY_INFORMATION) };
-	NTSTATUS Status = NtQuerySystemInformation(SystemCodeIntegrityInformation,
-												&CodeIntegrityInfo,
-												sizeof(CodeIntegrityInfo),
-												nullptr);
-	if (NT_SUCCESS(Status) &&
-		(CodeIntegrityInfo.CodeIntegrityOptions & (CODEINTEGRITY_OPTION_HVCI_KMCI_ENABLED | CODEINTEGRITY_OPTION_HVCI_IUM_ENABLED)) != 0)
-		return TRUE;
-
-	SYSTEM_ISOLATED_USER_MODE_INFORMATION IumInfo = { 0 };
-	Status = NtQuerySystemInformation(SystemIsolatedUserModeInformation,
-									&IumInfo,
-									sizeof(IumInfo),
-									nullptr);
-	if (NT_SUCCESS(Status) &&
-		(IumInfo.SecureKernelRunning || IumInfo.HvciEnabled))
-		return TRUE;
-
-	return FALSE;
+	return GetVbsReportFlags() != 0;
 }
 
 static
