@@ -2,6 +2,8 @@
 
 **UEFI boot-chain patching, Secure Boot and VBS state emulation for x64 Windows.**
 
+![msinfo32 Screenshot](.github/img/msinfo32.png)
+
 EfiMirage is a fork of [EfiGuard](https://github.com/Mattiwatti/EfiGuard) by
 [Mattiwatti](https://github.com/Mattiwatti). It builds on upstream's PatchGuard and
 Driver Signature Enforcement (DSE) patching, adding configurable Secure Boot and VBS/HVCI state
