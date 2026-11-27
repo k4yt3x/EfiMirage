@@ -1,13 +1,14 @@
 # EfiMirage
 
-**UEFI boot-chain patching, Secure Boot and VBS state emulation for x64 Windows.**
-
-![msinfo32 Screenshot](.github/img/msinfo32.png)
+Disable PatchGuard and DSE, and fake Secure Boot, VBS/HVCI, and Kernel DMA Protection on x64 Windows.
 
 EfiMirage is a fork of [EfiGuard](https://github.com/Mattiwatti/EfiGuard) by
 [Mattiwatti](https://github.com/Mattiwatti). It builds on upstream's PatchGuard and
-Driver Signature Enforcement (DSE) patching, adding configurable Secure Boot and VBS/HVCI state
-emulation, unattended configuration, and a Linux build and test workflow.
+Driver Signature Enforcement (DSE) patching, adding configurable Secure Boot, VBS/HVCI,
+and Kernel DMA Protection state emulation, unattended configuration, and a Linux build and test
+workflow.
+
+![msinfo32 Screenshot](.github/img/msinfo32.png)
 
 ## What it provides
 
@@ -18,9 +19,9 @@ emulation, unattended configuration, and a Linux build and test workflow.
 - A configurable UEFI loader and a Windows command-line utility.
 - Cross-compiled EFI and Windows binaries, verified bundles, regression tests, and OVMF tests.
 
-Both emulations change reported state, not firmware validation, the secure kernel, or TPM
-measurements. Cryptographic authorization of the runtime memory-access interface is not
-implemented.
+State emulation changes Windows reports, not firmware validation, secure-kernel execution, DMA
+remapping, or TPM PCRs and the measured-boot event log. Cryptographic authorization of the runtime
+memory-access interface is not implemented.
 
 ## Documentation
 
@@ -29,7 +30,7 @@ implemented.
 | [Installation and usage](docs/usage.md) | Boot methods, setup, and compatibility limits |
 | [Migrating from EfiGuard](docs/usage.md#migrating-from-efiguard) | Renamed files, configuration, and source interfaces |
 | [Secure Boot emulation](docs/secureboot.md) | Configuration, behavior, limitations, and verification |
-| [VBS and memory integrity emulation](docs/vbs.md) | Reports, limits, registry state, and verification |
+| [VBS, memory integrity, and DMA emulation](docs/vbs.md) | Reported state, limits, and verification |
 | [Build and development](docs/build.md) | Toolchains, tests, CI/CD, and releases |
 | [Architecture and features](docs/architecture.md) | Boot flow, debugging, and upstream history |
 | [Changelog](CHANGELOG.md) | Release history |
